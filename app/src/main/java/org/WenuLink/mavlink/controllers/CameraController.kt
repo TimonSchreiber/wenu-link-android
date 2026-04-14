@@ -391,19 +391,15 @@ class CameraController(
         }
     }
 
-    fun msgImageCaptured(imageInfo: ImageMetadata): msg_camera_image_captured {
+    fun msgImageCaptured(imageInfo: ImageMetadata
+    ): msg_camera_image_captured {
         val mavData = TelemetryMapper.toMavlink(imageInfo.telemetry)
-        return msg_camera_image_captured().apply {
-            camera_id = imageInfo.cameraID.toShort()
+        return msg_camera_image_captured().apply {camera_id = imageInfo.cameraID.toShort()
             lat = mavData.latitude
             lon = mavData.longitude
             alt = mavData.altitude
             relative_alt = mavData.relativeAltitude
-            q = OrientationUtils.eulerDegToQuaternion(
-                mavData.roll.toDouble(),
-                mavData.pitch.toDouble(),
-                mavData.yaw.toDouble()
-            ).toFloatArray()
+        q = OrientationUtils.eulerDegToQuaternion(mavData.roll.toDouble(),mavData.pitch.toDouble(),mavData.yaw.toDouble()).toFloatArray()
             image_index = imageInfo.index
             capture_result = (if (imageInfo.captureOk) 1 else 0).toByte()
             file_url = "".toByteArray()

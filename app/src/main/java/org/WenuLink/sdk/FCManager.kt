@@ -122,17 +122,15 @@ object FCManager {
         latitude: Double? = null,
         longitude: Double? = null,
         onResult: (String?) -> Unit
-    ) {
-        if (latitude != null && longitude != null) {
-            fcInstance?.setHomeLocation(
-                LocationCoordinate2D(latitude, longitude),
-                SDKUtils.createCompletionCallback(onResult)
-            )
-        } else {
-            fcInstance?.setHomeLocationUsingAircraftCurrentLocation(
-                SDKUtils.createCompletionCallback(onResult)
-            )
-        }
+    ) = if (latitude != null && longitude != null) {
+        fcInstance?.setHomeLocation(
+            LocationCoordinate2D(latitude, longitude),
+            SDKUtils.createCompletionCallback(onResult)
+        )
+    } else {
+        fcInstance?.setHomeLocationUsingAircraftCurrentLocation(
+            SDKUtils.createCompletionCallback(onResult)
+        )
     }
 
     fun isFlying() = fcInstance?.state?.isFlying == true

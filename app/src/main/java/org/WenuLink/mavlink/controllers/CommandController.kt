@@ -135,8 +135,8 @@ class CommandController(override var client: MAVLinkClient, override val handler
         logger.d { "Requesting to ${if (action) "arm" else "disarm"} motors" }
 
         val command = if (action) ArmCommand() else DisarmCommand()
-        handler.dispatchCommand(WenuLinkCommand.Aircraft(command)) { error ->
-            logger.d { "processTakeoff: $error" }
+        handler.dispatchCommand(WenuLinkCommand.Aircraft(command)) { result ->
+            logger.d { "processTakeoff: $result" }
         }
 
         sendCommandAck(commandMsg.command, MAV_RESULT.MAV_RESULT_ACCEPTED)
@@ -144,8 +144,8 @@ class CommandController(override var client: MAVLinkClient, override val handler
 
     fun processTakeoff(commandMsg: msg_command_long) {
         logger.d { "processTakeoff: $commandMsg" }
-        handler.dispatchCommand(WenuLinkCommand.Request(RequestTakeoff())) { error ->
-            logger.d { "processTakeoff: $error" }
+        handler.dispatchCommand(WenuLinkCommand.Request(RequestTakeoff())) { result ->
+            logger.d { "processTakeoff: $result" }
         }
         sendCommandAck(commandMsg.command, MAV_RESULT.MAV_RESULT_ACCEPTED)
     }
@@ -174,8 +174,8 @@ class CommandController(override var client: MAVLinkClient, override val handler
             WenuLinkCommand.Request(
                 RequestMissionAction(DelayAction.fromCommandLong(commandMsg))
             )
-        ) { error ->
-            logger.d { "processDelay: $error" }
+        ) { result ->
+            logger.d { "processDelay: $result" }
         }
         sendCommandAck(commandMsg.command, MAV_RESULT.MAV_RESULT_ACCEPTED)
     }
@@ -186,8 +186,8 @@ class CommandController(override var client: MAVLinkClient, override val handler
             WenuLinkCommand.Request(
                 RequestMissionAction(RotateAction.fromCommandLong(commandMsg))
             )
-        ) { error ->
-            logger.d { "processYaw: $error" }
+        ) { result ->
+            logger.d { "processYaw: $result" }
         }
         sendCommandAck(commandMsg.command, MAV_RESULT.MAV_RESULT_ACCEPTED)
     }

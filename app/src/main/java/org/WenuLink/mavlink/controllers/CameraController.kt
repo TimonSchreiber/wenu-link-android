@@ -165,7 +165,7 @@ class CameraController(
     }
 
     private fun requestStartCapture(commandLongMsg: msg_command_long) {
-        val cameraInfo = getCamera(commandLongMsg.param1.toInt()) ?: run {
+        val cameraInfo: CameraMetadata = getCamera(commandLongMsg.param1.toInt()) ?: run {
             client.sendMessage(
                 MessageUtils.msgCommandAck(
                     commandLongMsg.msgid,
@@ -211,7 +211,7 @@ class CameraController(
     }
 
     private fun requestStopCapture(commandLongMsg: msg_command_long) {
-        val cameraInfo = getCamera(commandLongMsg.param1.toInt()) ?: run {
+        val cameraInfo: CameraMetadata = getCamera(commandLongMsg.param1.toInt()) ?: run {
             client.sendMessage(
                 MessageUtils.msgCommandAck(
                     commandLongMsg.msgid,
@@ -227,6 +227,7 @@ class CameraController(
                 MAV_RESULT.MAV_RESULT_ACCEPTED
             )
         )
+
         handler.onImageCaptured = null
         handler.dispatchCommand(
             WenuLinkCommand.Camera(StopIntervalShootCommand(cameraInfo.id))
@@ -240,9 +241,7 @@ class CameraController(
     }
 
     private fun requestStartRecording(commandLongMsg: msg_command_long) {
-        val cameraInfo: CameraMetadata? = getCamera(commandLongMsg.param3.toInt())
-
-        if (cameraInfo == null) {
+        val cameraInfo: CameraMetadata = getCamera(commandLongMsg.param3.toInt()) ?: run {
             client.sendMessage(
                 MessageUtils.msgCommandAck(
                     commandLongMsg.msgid,

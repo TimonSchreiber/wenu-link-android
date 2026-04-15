@@ -77,10 +77,10 @@ class WenuLinkService : Service() {
 
         var contentText = "No service enabled yet"
         if (::mavlink.isInitialized) {
-            contentText = "Sending periodic heartbeats to GCS\n"
+            contentText = "\nSending periodic heartbeats to GCS"
         }
         if (::webRTC.isInitialized) {
-            contentText += "WebRTC streaming: ${webRTC.mediaOptions.videoCameraName}"
+            contentText += "\nWebRTC streaming: ${webRTC.mediaOptions.videoCameraName}"
         }
         // TODO: update according to each present service
         startForeground(

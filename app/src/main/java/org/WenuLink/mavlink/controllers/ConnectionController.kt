@@ -20,7 +20,6 @@ import com.MAVLink.enums.MAV_SYS_STATUS_SENSOR
 import com.MAVLink.enums.MAV_TYPE
 import com.MAVLink.enums.MAV_VTOL_STATE
 import com.MAVLink.minimal.msg_heartbeat
-import io.getstream.log.taggedLogger
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 import org.WenuLink.adapters.WenuLinkHandler
@@ -38,7 +37,6 @@ class ConnectionController(
     override val client: MAVLinkClient,
     override val handler: WenuLinkHandler
 ) : IController {
-    private val logger by taggedLogger(ConnectionController::class.java.simpleName)
     private var gcsLastTimestamp = 0L
     val isGCSPresent: Boolean
         get() {

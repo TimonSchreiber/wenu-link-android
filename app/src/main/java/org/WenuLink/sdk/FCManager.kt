@@ -127,12 +127,12 @@ object FCManager {
         -> AppSensorState.BOOT
 
         SensorState.DATA_EXCEPTION,
-        SensorState.IN_MOTION,
         SensorState.LARGE_BIAS
         -> AppSensorState.CALIBRATION_NEEDED
 
         SensorState.NORMAL_BIAS,
         SensorState.MEDIUM_BIAS,
+        SensorState.IN_MOTION,
         SensorState.UNKNOWN
         -> AppSensorState.OK
 

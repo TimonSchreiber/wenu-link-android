@@ -113,6 +113,7 @@ class WenuLinkHandler : CommandHandler<WenuLinkHandler>() {
                         // --- Sync real aircraft state ---
                         launch {
                             aircraft.syncSensors()
+                            aircraft.syncState()
                             if (aircraft.state.isFlying()) flyingModeHooks()
                         }
 

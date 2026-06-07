@@ -118,6 +118,18 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
 
         logger.i { "New aircraft state: $fcState" }
 
+        // state as armed and taking off
+        if (fcState.isArmed() && !state.isArmed() && !fcState.isFlying()) {
+            dispatchTransition(ArmTransition)
+            dispatchTransition(TakeoffTransition)
+        }
+        // state as isFlying
+        if (fcState.isFlying() && !state.isFlying()) dispatchTransition(FlyingTransition)
+        // state as landing
+        if (fcState.isLanding() && !state.isLanding()) dispatchTransition(LandTransition)
+        // state as standby
+        if (fcState.isStandBy() && !state.isStandBy()) dispatchTransition(StandbyTransition)
+
         stateMachine.forceSet(fcState)
     }
 
@@ -257,6 +269,11 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
     }
 
     fun takeOff() {
+        // sync and check for already-airborne cases
+        if (state.isFlying()) {
+            logger.d { "Aircraft already airborne" }
+            return
+        }
         logger.d { "Aircraft taking off" }
         FCManager.startTakeoff { error ->
             if (error != null) {

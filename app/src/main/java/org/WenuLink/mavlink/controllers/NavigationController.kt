@@ -377,7 +377,6 @@ class NavigationController(
         var yaw = telemetryData.yaw
         if (yaw < 0) yaw += 360
         hdg = (yaw * 100).roundToInt()
-//        client.sendMessage(msg)
     }
 
     fun msgRawGPSInt(): MAVLinkMessage? = msg_gps_raw_int().apply {

@@ -194,10 +194,10 @@ class TelemetryHandler : IHandler<TelemetryHandler> {
     private fun noIMU() = FCManager.getIMUCount() == 0
 
     @Synchronized
-    fun isReadingSensors() = noIMU() || lastIMUState.gyroscope.isNotEmpty() || mustRunSimulation
+    fun isReadingSensors() = noIMU() || mustRunSimulation || lastIMUState.gyroscope.isNotEmpty()
 
     @Synchronized
-    fun isCompassOk() = noIMU() || FCManager.compassOk() || mustRunSimulation
+    fun isCompassOk() = noIMU() || mustRunSimulation || FCManager.compassOk()
 
     @Synchronized
     fun isAccelerometerOk() = noIMU() || mustRunSimulation ||

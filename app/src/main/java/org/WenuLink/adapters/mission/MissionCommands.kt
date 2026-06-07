@@ -35,7 +35,7 @@ data class UploadMissionCommand(
     private val flightSpeed: Float = 5f
 ) : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.canCreateMission() -> CommandResult.ok
+        ctx.state.canUploadMission -> CommandResult.ok
         else -> CommandResult.error("Upload not ready")
     }
 
@@ -55,9 +55,9 @@ data class UploadMissionCommand(
 
 data object StartWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.canCreateMission() -> CommandResult.error("No mission found")
-        ctx.state.isActive() -> CommandResult.error("Already started")
-        ctx.state.canStartMission() -> CommandResult.ok
+        ctx.state.canUploadMission -> CommandResult.error("No mission found")
+        ctx.state.isActive -> CommandResult.error("Already started")
+        ctx.state.canStartMission -> CommandResult.ok
         else -> CommandResult.error("Not ready")
     }
 
@@ -77,7 +77,7 @@ data object StartWaypointMission : MissionCommand {
 
 data object PauseWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.isActive() -> CommandResult.ok
+        ctx.state.isActive -> CommandResult.ok
         else -> CommandResult.error("Not started")
     }
 
@@ -97,7 +97,7 @@ data object PauseWaypointMission : MissionCommand {
 
 data object ResumeWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.isPaused() -> CommandResult.ok
+        ctx.state.isPaused -> CommandResult.ok
         else -> CommandResult.error("Already in execution")
     }
 
@@ -117,7 +117,7 @@ data object ResumeWaypointMission : MissionCommand {
 
 data object StopWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        !ctx.state.canCreateMission() -> CommandResult.ok
+        !ctx.state.canUploadMission -> CommandResult.ok
         else -> CommandResult.error("Nothing to stop")
     }
 
@@ -188,7 +188,7 @@ data class DelayAction(val timeMillis: Long) : MissionActionCommand {
     }
 
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.isActive() -> CommandResult.error("Busy")
+        ctx.state.isActive -> CommandResult.error("Busy")
         else -> CommandResult.ok
     }
 

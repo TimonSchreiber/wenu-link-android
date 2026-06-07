@@ -228,7 +228,7 @@ class WenuLinkHandler : CommandHandler<WenuLinkHandler>() {
     }
 
     fun missionPause() {
-        if (!mission.state.isActive()) return
+        if (!mission.state.isActive) return
 
         logger.i { "Pause mission" }
         when {
@@ -251,7 +251,7 @@ class WenuLinkHandler : CommandHandler<WenuLinkHandler>() {
     }
 
     fun missionResume() {
-        if (!mission.state.isPaused()) return
+        if (!mission.state.isPaused) return
 
         logger.i { "Resume mission" }
         when {
@@ -272,7 +272,7 @@ class WenuLinkHandler : CommandHandler<WenuLinkHandler>() {
     }
 
     fun missionStop() {
-        if (!mission.state.isActive()) return
+        if (!mission.state.isActive) return
 
         when {
             controlAuthority.isWaypoint() ->
@@ -325,7 +325,7 @@ class WenuLinkHandler : CommandHandler<WenuLinkHandler>() {
 
     private fun waypointMissionHooks() = when {
         mission.state.isComplete -> onMissionComplete()
-        mission.state.mustProcessSequence() -> mission.processNode()
+        mission.state.mustProcessSequence -> mission.processNode()
         else -> {}
     }
 

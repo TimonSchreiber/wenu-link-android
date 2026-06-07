@@ -105,8 +105,8 @@ class NavigationController(
         else -> null
     }
 
-    fun node2MissionItemMsg(nIdx: Int): msg_mission_item_int {
-        val node = handler.mission.getWaypointNode(nIdx)
+    fun node2MissionItemMsg(nIdx: Int): msg_mission_item_int? {
+        val node = handler.mission.getWaypointNode(nIdx) ?: return null
         val coordinates = node.coordinates3D
         return when (node) {
             is MissionNode.Takeoff -> NavTakeoffMissionItem(
@@ -145,7 +145,7 @@ class NavigationController(
     fun sendMissionCount() = client.sendMessage(
         msg_mission_count().apply {
             mission_type = MAV_MISSION_TYPE.MAV_MISSION_TYPE_MISSION.toShort()
-            count = handler.mission.state.totalNodes()
+            count = handler.mission.state.currentMissionSize
             opaque_id = handler.mission.state.id.toLong()
             logger.d { "sendMissionCount: $count" }
         }
@@ -156,8 +156,7 @@ class NavigationController(
         val idx = itemMsg.seq
         logger.d { "sendMissionItem #$idx" }
         if (handler.mission.hasWaypointNodes()) {
-            val itemMsg = node2MissionItemMsg(idx)
-            client.sendMessage(itemMsg)
+            node2MissionItemMsg(idx)?.let { client.sendMessage(it) }
         }
     }
 
@@ -178,8 +177,6 @@ class NavigationController(
         logger.d { "createNewMission" }
         val missionMsg = msg as msg_mission_count
 
-        if (!handler.mission.state.canCreateMission()) return
-
         // TODO: Stop mission execution first if needed
         numberOfExpectedItems = missionMsg.count
         currentRetryTimes = 0
@@ -189,9 +186,10 @@ class NavigationController(
         if (numberOfExpectedItems > 0) {
             // ask for the first item an iterate over count
             logger.d { "Creating new mission with ${missionMsg.count} items" }
+            handler.mission.createWaypointMission()
             // Request first mission item...
             requestMissionItem(0)
-            // TODO: timeout waiting start?
+            // TODO: timeout guard start
         }
     }
 
@@ -221,7 +219,7 @@ class NavigationController(
         }
 
         // Store item and request next or upload the mission
-        val accepted = handler.mission.addWaypointNode(itemMsg)
+        val accepted = handler.mission.processItem(itemMsg)
         if (!accepted) {
             logger.w { "Unsupported mission command: ${itemMsg.command}" }
             sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_UNSUPPORTED)
@@ -339,13 +337,11 @@ class NavigationController(
 
     fun msgMissionCurrent(): msg_mission_current = msg_mission_current().apply {
         seq = handler.mission.state.targetSequence
-        total = handler.mission.state.assembler.size()
+        total = handler.mission.state.currentMissionSize
         mission_id = handler.mission.state.id.toLong()
         mission_state = handler.mission.state.mavlink.toShort()
-        mission_mode = if (handler.mission.state.isActive()) 1 else 2
+        mission_mode = if (handler.mission.state.isActive) 1 else 2
     }
-
-    // TODO: start, pause, and resume procedures
 
     fun msgHomePosition(): MAVLinkMessage? = msg_home_position().apply {
         val homeLoc = handler.aircraft.state.homeCoordinates ?: return null

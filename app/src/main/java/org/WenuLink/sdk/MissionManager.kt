@@ -180,7 +180,11 @@ object MissionManager {
     fun resumeMission(onResult: (String?) -> Unit) =
         operator.resumeMission(SDKUtils.createCompletionCallback(onResult))
 
-    fun clearMission() = operator.clearMission()
+    fun clearMission() {
+        val nElements = operator.loadedMission?.waypointCount ?: 0
+        logger.d { "Clearing mission with $nElements elements" }
+        operator.clearMission()
+    }
 
     fun addListeners(onWaypointStart: (Int) -> Unit) {
         logger.d { "addListeners" }

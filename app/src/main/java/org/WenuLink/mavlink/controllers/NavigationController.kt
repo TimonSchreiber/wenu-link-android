@@ -67,7 +67,7 @@ class NavigationController(
         msg_mission_count.MAVLINK_MSG_ID_MISSION_COUNT to ::createNewMission,
         msg_mission_item_int.MAVLINK_MSG_ID_MISSION_ITEM_INT to ::processMissionItem,
         msg_mission_request_int.MAVLINK_MSG_ID_MISSION_REQUEST_INT to ::sendMissionItem,
-        msg_mission_clear_all.MAVLINK_MSG_ID_MISSION_CLEAR_ALL to { sendMissionClear() },
+        msg_mission_clear_all.MAVLINK_MSG_ID_MISSION_CLEAR_ALL to { processMissionClear() },
         msg_mission_ack.MAVLINK_MSG_ID_MISSION_ACK to ::processAck
     )
 
@@ -160,7 +160,7 @@ class NavigationController(
         }
     }
 
-    fun sendMissionClear() {
+    fun processMissionClear() {
         handler.missionClear()
         sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_ACCEPTED)
     }
@@ -186,10 +186,17 @@ class NavigationController(
         if (numberOfExpectedItems > 0) {
             // ask for the first item an iterate over count
             logger.d { "Creating new mission with ${missionMsg.count} items" }
-            handler.mission.createWaypointMission()
-            // Request first mission item...
-            requestMissionItem(0)
-            // TODO: timeout guard start
+            val newMissionResult = handler.mission.createWaypointMission()
+            if (newMissionResult.hasError) {
+                sendStatusText(
+                    newMissionResult.errorReason,
+                    MAV_SEVERITY.MAV_SEVERITY_ERROR
+                )
+            } else {
+                // Request first mission item...
+                requestMissionItem(0)
+                // TODO: timeout guard start
+            }
         }
     }
 
@@ -233,20 +240,15 @@ class NavigationController(
             requestMissionItem(nextExpectedSeq)
         } else {
             // reached the end of the mission items
-            handler.mission.uploadWaypoints { result ->
-                if (result.hasError) {
-                    sendStatusText(
-                        result.errorReason,
-                        MAV_SEVERITY.MAV_SEVERITY_ERROR
-                    )
+            val canUploadResult = handler.mission.missionUploadReady()
+            sendAckAnswer(
+                if (canUploadResult.hasError) {
+                    sendStatusText(canUploadResult.errorReason, MAV_SEVERITY.MAV_SEVERITY_ERROR)
+                    MAV_MISSION_RESULT.MAV_MISSION_DENIED
                 } else {
-                    sendStatusText(
-                        "Successful mission upload",
-                        MAV_SEVERITY.MAV_SEVERITY_INFO
-                    )
+                    MAV_MISSION_RESULT.MAV_MISSION_ACCEPTED
                 }
-            }
-            sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_ACCEPTED)
+            )
         }
     }
 
@@ -259,8 +261,8 @@ class NavigationController(
 
     fun sendStatusText(status: String, severity: Int) = client.sendMessage(
         msg_statustext().apply {
-            logger.d { "sendStatusText" }
-            text = status.toByteArray()
+            logger.d { "sendStatusText $status" }
+            text = status.chunked(50).first().toByteArray()
             this.severity = severity.toShort()
         }
     )
@@ -281,7 +283,7 @@ class NavigationController(
                 )
             )
         ) { result ->
-            logger.d { "missionStart: $result" }
+            if (result.hasError) logger.w { "Error on mission start: ${result.errorReason}" }
         }
     }
 

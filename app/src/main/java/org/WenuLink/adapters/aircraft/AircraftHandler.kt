@@ -58,9 +58,7 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
         val isAllowed = stateMachine.isModeAllowed(mode)
 
         if (isAllowed.hasError) {
-            return CommandResult.error(
-                "Mode $mode not allowed: ${isAllowed.errorReason}"
-            )
+            return CommandResult.error("Mode $mode not allowed: ${isAllowed.errorReason}")
         }
 
         logger.d { "Mode change: ${state.flightMode} -> $mode" }
@@ -116,19 +114,18 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
         // Force new logic state update only when different
         if (!stateMachine.hasStateChanged(fcState)) return
 
-        logger.i { "New aircraft state: $fcState" }
+//        // state as armed and taking off
+//        if (fcState.isArmed() && state.isStandBy()) {
+////            dispatchTransition(ArmTransition)
+//            // will take off if armed from the ground
+//            if (fcState.isTakingOff()) dispatchTransition(TakeoffTransition)
+//        }
+//        // state as isFlying
+//        if (fcState.isFlying() && !state.isTakingOff()) dispatchTransition(FlyingTransition)
+//        // state as standby
+//        if (!fcState.isArmed()) dispatchTransition(StandbyTransition)
 
-        // state as armed and taking off
-        if (fcState.isArmed() && !state.isArmed() && !fcState.isFlying()) {
-            dispatchTransition(ArmTransition)
-            dispatchTransition(TakeoffTransition)
-        }
-        // state as isFlying
-        if (fcState.isFlying() && !state.isFlying()) dispatchTransition(FlyingTransition)
-        // state as landing
-        if (fcState.isLanding() && !state.isLanding()) dispatchTransition(LandTransition)
-        // state as standby
-        if (fcState.isStandBy() && !state.isStandBy()) dispatchTransition(StandbyTransition)
+        logger.i { "New aircraft state: $state" }
 
         stateMachine.forceSet(fcState)
     }

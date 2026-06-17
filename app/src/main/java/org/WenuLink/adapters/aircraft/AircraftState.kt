@@ -40,6 +40,8 @@ data class AircraftState(
 
     fun isLanding() = landed == MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
 
+    fun isTakingOff() = landed == MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF
+
     fun isOnTheGround() = landed == MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
 
     fun isUninitialized() = mavlink == MAV_STATE.MAV_STATE_UNINIT
@@ -55,13 +57,16 @@ data class AircraftState(
             else -> MAV_STATE.MAV_STATE_STANDBY
         }
 
-        // Sync of landed state and transitions, Landing is updated from transition dispatch.
+        // Sync of landed state
         val landedState = when {
-            !isArmed && isOnTheGround() -> MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+            !isArmed && !isFlying -> MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
             isArmed && isOnTheGround() -> MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF
+//            !isFlying && isTakingOff() -> MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF
+            isFlying && isTakingOff() -> MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
+            isFlying && isOnTheGround() -> MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
             isFlying && isLanding() -> MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
-            !isFlying && isLanding() -> MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
-            isFlying -> MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
+//            !isFlying && isLanding() -> MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+//            !isFlying && isFlying() -> MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
             else -> this.landed
         }
 

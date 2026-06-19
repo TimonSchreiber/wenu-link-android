@@ -68,31 +68,6 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
         return CommandResult.ok
     }
 
-    private fun enforceModeConsistency() {
-        if (stateMachine.isModeAllowed(state.flightMode).hasError) {
-            stateMachine.syncArmState()
-            return
-        }
-
-        val fallbackMode = if (state.isFlying()) {
-            ArduCopterFlightMode.GUIDED
-        } else {
-            ArduCopterFlightMode.STABILIZE
-        }
-
-        logger.w {
-            "Mode ${state.flightMode} invalid for state ${state.mavlink}, fallback to $fallbackMode"
-        }
-
-        stateMachine.updateFlightMode(fallbackMode)
-    }
-
-    fun canDispatchTransition(transition: StateTransition): UnitResult =
-        stateMachine.canDispatch(transition)
-
-    fun dispatchTransition(transition: StateTransition): AircraftState =
-        stateMachine.dispatch(transition)
-
     fun syncSensors(sensorsInterval: Long = 1000L) {
         if (isPowerOff) return
         val currentTimestamp = System.currentTimeMillis()
@@ -105,29 +80,10 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
     }
 
     fun syncState() {
-        // Check for armed and flying conditions to update the last
-        val fcState = state.resolveFrom(
+        stateMachine.sync(
             currentTelemetry?.motorsOn ?: false,
             currentTelemetry?.isFlying ?: false
         )
-
-        // Force new logic state update only when different
-        if (!stateMachine.hasStateChanged(fcState)) return
-
-//        // state as armed and taking off
-//        if (fcState.isArmed() && state.isStandBy()) {
-////            dispatchTransition(ArmTransition)
-//            // will take off if armed from the ground
-//            if (fcState.isTakingOff()) dispatchTransition(TakeoffTransition)
-//        }
-//        // state as isFlying
-//        if (fcState.isFlying() && !state.isTakingOff()) dispatchTransition(FlyingTransition)
-//        // state as standby
-//        if (!fcState.isArmed()) dispatchTransition(StandbyTransition)
-
-        logger.i { "New aircraft state: $state" }
-
-        stateMachine.forceSet(fcState)
     }
 
     private suspend fun loadParameters(timeout: Long = 5000L): Boolean {

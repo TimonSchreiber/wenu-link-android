@@ -14,27 +14,27 @@ sealed interface AircraftCommand : ICommand<AircraftHandler> {
 data class BootCommand(val timeout: Long = 5000L) : AircraftCommand {
     override fun validate(ctx: AircraftHandler): UnitResult = when {
         !ctx.isPowerOff -> CommandResult.error("Already booted")
-        else -> ctx.canDispatchTransition(BootTransition)
+        else -> ctx.stateMachine.canDispatch(BootTransition)
     }
 
     override suspend fun execute(ctx: AircraftHandler): UnitResult {
         // TODO: check if compatible with CancellableCoroutine
-        ctx.dispatchTransition(BootTransition)
+        ctx.stateMachine.dispatch(BootTransition)
         val bootResult = ctx.boot(timeout)
         if (bootResult.hasError) return bootResult
-        ctx.dispatchTransition(StandbyTransition)
+        ctx.stateMachine.dispatch(StandbyTransition)
         return CommandResult.ok
     }
 
     override suspend fun onStop(ctx: AircraftHandler) {
-        ctx.dispatchTransition(InitialTransition)
+        ctx.stateMachine.dispatch(InitialTransition)
     }
 }
 
 data class ArmCommand(val timeout: Long = 5000L) : AircraftCommand {
     override fun validate(ctx: AircraftHandler): UnitResult = when {
         !ctx.sensorsHealthy -> CommandResult.error("Sensors failing")
-        else -> ctx.canDispatchTransition(ArmTransition)
+        else -> ctx.stateMachine.canDispatch(ArmTransition)
     }
 
     override suspend fun execute(ctx: AircraftHandler): UnitResult {
@@ -47,7 +47,7 @@ data class ArmCommand(val timeout: Long = 5000L) : AircraftCommand {
             }
         }
         // Automatic takeoff only. Must wait for state changes
-        ctx.dispatchTransition(ArmTransition)
+        ctx.stateMachine.dispatch(ArmTransition)
 
         return CommandResult.ok
     }
@@ -59,12 +59,12 @@ data class ArmCommand(val timeout: Long = 5000L) : AircraftCommand {
 
 data class DisarmCommand(val timeout: Long = 5000L) : AircraftCommand {
     override fun validate(ctx: AircraftHandler): UnitResult =
-        ctx.canDispatchTransition(StandbyTransition)
+        ctx.stateMachine.canDispatch(StandbyTransition)
 
     override suspend fun execute(ctx: AircraftHandler): UnitResult {
         ctx.disarmMotors()
         return if (ctx.waitArmTransition(false, timeout)) {
-            ctx.dispatchTransition(StandbyTransition)
+            ctx.stateMachine.dispatch(StandbyTransition)
             CommandResult.ok
         } else {
             CommandResult.error("Unable to disarm motors")
@@ -76,14 +76,14 @@ data class DisarmCommand(val timeout: Long = 5000L) : AircraftCommand {
 
 data class TakeoffCommand(val timeout: Long = 15_000L) : AircraftCommand {
     override fun validate(ctx: AircraftHandler): UnitResult =
-        ctx.canDispatchTransition(TakeoffTransition)
+        ctx.stateMachine.canDispatch(TakeoffTransition)
 
     override suspend fun execute(ctx: AircraftHandler): UnitResult {
         // TODO: check if compatible with CancellableCoroutine
-        ctx.dispatchTransition(TakeoffTransition)
+        ctx.stateMachine.dispatch(TakeoffTransition)
         ctx.takeOff()
         return if (ctx.waitFlightState(true, timeout)) {
-            ctx.dispatchTransition(FlyingTransition)
+            ctx.stateMachine.dispatch(FlyingTransition)
             CommandResult.ok
         } else {
             ctx.dispatchCommand(DisarmCommand())
@@ -100,19 +100,19 @@ data class ShutdownCommand(val withTransitionCheck: Boolean = true) : AircraftCo
     override fun validate(ctx: AircraftHandler): UnitResult = when {
         ctx.isPowerOff -> CommandResult.error("Already power off")
         !withTransitionCheck -> CommandResult.ok
-        else -> ctx.canDispatchTransition(PowerOffTransition)
+        else -> ctx.stateMachine.canDispatch(PowerOffTransition)
     }
 
     override suspend fun execute(ctx: AircraftHandler): UnitResult {
         // TODO: check if compatible with CancellableCoroutine
-        if (withTransitionCheck) ctx.dispatchTransition(PowerOffTransition)
+        if (withTransitionCheck) ctx.stateMachine.dispatch(PowerOffTransition)
         ctx.shutdown()
-        ctx.dispatchTransition(InitialTransition)
+        ctx.stateMachine.dispatch(InitialTransition)
         return CommandResult.ok
     }
 
     override suspend fun onStop(ctx: AircraftHandler) {
-        ctx.dispatchTransition(InitialTransition)
+        ctx.stateMachine.dispatch(InitialTransition)
     }
 }
 

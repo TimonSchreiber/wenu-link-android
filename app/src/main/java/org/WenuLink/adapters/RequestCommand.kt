@@ -36,7 +36,7 @@ sealed interface RequestCommand : ICommand<WenuLinkHandler> {
 
 open class RequestTransition(open val transition: StateTransition) : RequestCommand {
     override fun validate(ctx: WenuLinkHandler): UnitResult =
-        ctx.aircraft.canDispatchTransition(transition)
+        ctx.aircraft.stateMachine.canDispatch(transition)
 
     suspend fun checkHomePosition(ctx: WenuLinkHandler): UnitResult {
         if (ctx.aircraft.state.isHomeSet()) return CommandResult.ok
@@ -46,7 +46,7 @@ open class RequestTransition(open val transition: StateTransition) : RequestComm
     }
 
     override suspend fun execute(ctx: WenuLinkHandler): UnitResult {
-        ctx.aircraft.dispatchTransition(transition)
+        ctx.aircraft.stateMachine.dispatch(transition)
         return CommandResult.ok
     }
 
@@ -130,9 +130,6 @@ data class RequestStartMission(
         // Wait initial altitude for mission start (5min top)
         val initOk = ctx.mission.waitMissionStart(300_000L)
         if (!initOk) return CommandResult.error("Mission did not start!")
-
-        // Handle final transition
-        ctx.aircraft.dispatchTransition(FlyingTransition)
 
         return CommandResult.ok
     }

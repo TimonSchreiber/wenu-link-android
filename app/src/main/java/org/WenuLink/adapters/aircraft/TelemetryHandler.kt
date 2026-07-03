@@ -124,20 +124,22 @@ class TelemetryHandler : IHandler<TelemetryHandler> {
         AircraftManager.stopListeners()
     }
 
-    suspend fun listenSimulation(listen: Boolean) = if (listen) {
-        for (i in 1..3) { // try 3 times
-            val error = SimManager.run() ?: run {
-                logger.i { "Simulation running." }
-                return
+    suspend fun listenSimulation(listen: Boolean) {
+        if (listen) {
+            for (i in 1..3) { // try 3 times
+                val error = SimManager.run() ?: run {
+                    logger.i { "Simulation running." }
+                    return
+                }
+                logger.w { "Error in run simulation: $error. Trying again" }
+                delay(500L)
             }
-            logger.w { "Error in run simulation: $error. Trying again" }
-            delay(500L)
+            logger.e { "Unable to start simulation, 3 failed attempts. Stopping" }
+        } else {
+            SimManager.stop()
+                ?.let { logger.e { "Unable to stop simulation: $it" } }
+                ?: logger.i { "Simulation stopped." }
         }
-        logger.e { "Unable to start simulation, 3 failed attempts. Stopping" }
-    } else {
-        SimManager.stop()
-            ?.let { logger.e { "Unable to stop simulation: $it" } }
-            ?: logger.i { "Simulation stopped." }
     }
 
     suspend fun listenVehicleState(listen: Boolean) = if (mustRunSimulation) {
@@ -194,10 +196,10 @@ class TelemetryHandler : IHandler<TelemetryHandler> {
     private fun noIMU() = FCManager.getIMUCount() == 0
 
     @Synchronized
-    fun isReadingSensors() = noIMU() || lastIMUState.gyroscope.isNotEmpty() || mustRunSimulation
+    fun isReadingSensors() = noIMU() || mustRunSimulation || lastIMUState.gyroscope.isNotEmpty()
 
     @Synchronized
-    fun isCompassOk() = noIMU() || FCManager.compassOk() || mustRunSimulation
+    fun isCompassOk() = noIMU() || mustRunSimulation || FCManager.compassOk()
 
     @Synchronized
     fun isAccelerometerOk() = noIMU() || mustRunSimulation ||

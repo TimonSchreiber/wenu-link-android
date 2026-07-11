@@ -174,14 +174,18 @@ data class MAVLinkBatteryData(
 object BatteryMapper {
     private const val UNKNOWN_INT = -1
     private const val UNKNOWN_SHORT = Short.MAX_VALUE // INT16_MAX per MAVLink spec
-    private const val UINT16_MAX = 65535
+    private const val UINT16_MAX = UShort.MAX_VALUE
 
     fun toMavlink(source: BatteryData): MAVLinkBatteryData {
         val fullCharge = source.fullChargeCapacity
         val remaining = source.chargeRemaining
-        val voltages = mutableListOf(source.voltage ?: UINT16_MAX).apply {
-            while (size < 10) add(UINT16_MAX)
-        }.toIntArray()
+        val voltages = IntArray(10) {
+            if (it == 0) {
+                source.voltage ?: UINT16_MAX.toInt()
+            } else {
+                UINT16_MAX.toInt()
+            }
+        }
 
         return MAVLinkBatteryData(
             currentConsumed = if (fullCharge != null && remaining != null) {
@@ -201,7 +205,7 @@ object BatteryMapper {
             } else {
                 UNKNOWN_INT.toByte()
             },
-            voltagesBattery = source.voltage ?: UNKNOWN_INT,
+            voltagesBattery = source.voltage ?: UINT16_MAX.toInt(),
             currentBatteryRaw = source.current?.toShort() ?: UNKNOWN_INT.toShort()
         )
     }

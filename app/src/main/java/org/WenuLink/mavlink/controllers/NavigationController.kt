@@ -262,7 +262,13 @@ class NavigationController(
     fun sendStatusText(status: String, severity: Int) = client.sendMessage(
         msg_statustext().apply {
             logger.d { "sendStatusText $status" }
-            text = status.chunked(50).first().toByteArray()
+            text = (
+                if ((status.length + 3) > 50) {
+                    status.take(47) + "..."
+                } else {
+                    status
+                }
+                ).toByteArray()
             this.severity = severity.toShort()
         }
     )

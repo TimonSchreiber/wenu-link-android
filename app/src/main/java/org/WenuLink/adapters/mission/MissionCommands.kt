@@ -54,12 +54,14 @@ data class UploadWaypointMission(val maxTries: Int = 3) : MissionCommand {
         }
     }
     override suspend fun execute(ctx: MissionHandler): UnitResult {
-        repeat(maxTries) {
-            val uploadResult = tryUpload(ctx)
-            if (!uploadResult.hasError) return UnitResult.ok
+        val maxAttempts = maxTries.coerceAtLeast(1)
+        var attempt = 0
+        var result: UnitResult = CommandResult.error("No upload attempted")
+        while (result.hasError && attempt < maxAttempts) {
+            result = tryUpload(ctx)
+            attempt++
         }
-        // If all retries failed, do final attempt and return result
-        return tryUpload(ctx)
+        return result
     }
 
     override suspend fun onStop(ctx: MissionHandler) {

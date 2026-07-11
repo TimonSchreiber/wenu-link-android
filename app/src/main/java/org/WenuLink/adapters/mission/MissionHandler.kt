@@ -15,7 +15,7 @@ import org.WenuLink.sdk.MissionManager
 
 data class MissionState(
     val mavlink: Int = MISSION_STATE.MISSION_STATE_UNKNOWN,
-    val id: Int = 202512,
+    val id: Int = 100,
     val startSequence: Int = 1,
     val currentSequence: Int? = null,
     val assembler: MissionAssembler? = null,
@@ -85,10 +85,7 @@ data class MissionState(
         unvisitedSequence = true
     ).fromMissionManager()
 
-    fun resetAssembler(): MissionState {
-        assembler?.reset()
-        return copy(assembler = null)
-    }
+    fun resetAssembler(): MissionState = copy(assembler = null)
 }
 
 class MissionHandler : CommandHandler<MissionHandler>() {
@@ -200,7 +197,7 @@ class MissionHandler : CommandHandler<MissionHandler>() {
     }
 
     @Synchronized
-    fun createWaypointMission(): UnitResult {
+    fun createWaypointMission(missionId: Int = 100): UnitResult {
         if (state.isReceivingItems) return UnitResult.error("Other mission process is ongoing")
 
         if (state.hasAssembler) {
@@ -208,8 +205,8 @@ class MissionHandler : CommandHandler<MissionHandler>() {
             state = state.resetAssembler()
             state = state.setUploadReady(false)
         }
-        logger.d { "Adding new mission id 202606" }
-        state = state.createMission(202606)
+        logger.d { "Adding new mission id $missionId" }
+        state = state.createMission(missionId)
 
         setReceivingItems(true)
         return UnitResult.ok
@@ -224,7 +221,10 @@ class MissionHandler : CommandHandler<MissionHandler>() {
     }
 
     fun processItem(itemMsg: msg_mission_item_int): Boolean {
-        if (!state.hasAssembler) logger.w { "Processing item without assembler" }
+        if (!state.hasAssembler) {
+            logger.w { "processItem called without assembler, item ${itemMsg.command} dropped" }
+            return false
+        }
         return state.assembler?.addWaypointNode(itemMsg) ?: false
     }
 

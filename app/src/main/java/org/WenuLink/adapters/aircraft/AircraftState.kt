@@ -30,8 +30,10 @@ data class AircraftState(
     val homeCoordinates: Coordinates3D? = null,
     val modeFlag: Int = MAV_MODE_FLAG.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
     val flightMode: ArduCopterFlightMode = ArduCopterFlightMode.STABILIZE,
-    val armRequested: Boolean = false
+    val armTimestamp: Long = 0
 ) {
+    val armRequested = armTimestamp > 0
+
     fun isHomeSet() = homeCoordinates != null
 
     fun isStandBy() = mavlink == MAV_STATE.MAV_STATE_STANDBY
@@ -105,7 +107,7 @@ object StandbyTransition : StateTransition {
     override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_STANDBY,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND,
-        armRequested = false
+        armTimestamp = 0
     )
 }
 
@@ -117,7 +119,7 @@ object ArmTransition : StateTransition {
     }
 
     override fun reduce(from: AircraftState): AircraftState =
-        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armRequested = true)
+        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armTimestamp = System.currentTimeMillis())
 }
 
 object TakeoffTransition : StateTransition {
@@ -145,7 +147,7 @@ object FlyingTransition : StateTransition {
     }
 
     override fun reduce(from: AircraftState): AircraftState =
-        from.copy(landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR, armRequested = false)
+        from.copy(landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR, armTimestamp = 0)
 }
 
 object LandTransition : StateTransition {
@@ -243,18 +245,28 @@ class AircraftStateMachine {
     fun sync(isArmed: Boolean, isFlying: Boolean) {
         // Check state and dispatch state transitions accordingly
         val fcState = state.resolveFrom(isArmed, isFlying)
-        // arm and taking off
-        if (fcState.isArmed() && state.isOnTheGround()) {
-            dispatch(ArmTransition)
-            dispatch(TakeoffTransition)
-        }
-        // is flying
-        if (fcState.isFlying() && state.isTakingOff()) {
-            dispatch(FlyingTransition)
-        }
-        // is landing should be triggered and fixed until standby
-        if (!fcState.isArmed() && !fcState.isFlying() && !state.armRequested) {
-            dispatch(StandbyTransition)
+        when {
+            // RC trigger arm while on ground: advance to armed
+            fcState.isArmed() && state.isOnTheGround() -> dispatch(ArmTransition)
+
+            // Armed and on ground: advance to takeoff
+            fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() ->
+                dispatch(TakeoffTransition)
+
+            // Taking off and now flying: advance to flying
+            fcState.isArmed() && fcState.isFlying() && state.isTakingOff() ->
+                dispatch(FlyingTransition)
+
+            // Disarmed and grounded: return to standby
+            !fcState.isArmed() && !fcState.isFlying() && !state.armRequested ->
+                dispatch(StandbyTransition)
+
+            // Catch unsuccessful arm
+            !fcState.isArmed() && state.armRequested -> {
+                if ((state.armTimestamp - System.currentTimeMillis()) > 10_000) {
+                    dispatch(StandbyTransition)
+                }
+            }
         }
     }
 }

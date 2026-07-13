@@ -67,7 +67,7 @@ class NavigationController(
         msg_mission_count.MAVLINK_MSG_ID_MISSION_COUNT to ::createNewMission,
         msg_mission_item_int.MAVLINK_MSG_ID_MISSION_ITEM_INT to ::processMissionItem,
         msg_mission_request_int.MAVLINK_MSG_ID_MISSION_REQUEST_INT to ::sendMissionItem,
-        msg_mission_clear_all.MAVLINK_MSG_ID_MISSION_CLEAR_ALL to { sendMissionClear() },
+        msg_mission_clear_all.MAVLINK_MSG_ID_MISSION_CLEAR_ALL to { processMissionClear() },
         msg_mission_ack.MAVLINK_MSG_ID_MISSION_ACK to ::processAck
     )
 
@@ -105,8 +105,8 @@ class NavigationController(
         else -> null
     }
 
-    fun node2MissionItemMsg(nIdx: Int): msg_mission_item_int {
-        val node = handler.mission.getWaypointNode(nIdx)
+    fun node2MissionItemMsg(nIdx: Int): msg_mission_item_int? {
+        val node = handler.mission.getWaypointNode(nIdx) ?: return null
         val coordinates = node.coordinates3D
         return when (node) {
             is MissionNode.Takeoff -> NavTakeoffMissionItem(
@@ -145,7 +145,7 @@ class NavigationController(
     fun sendMissionCount() = client.sendMessage(
         msg_mission_count().apply {
             mission_type = MAV_MISSION_TYPE.MAV_MISSION_TYPE_MISSION.toShort()
-            count = handler.mission.state.totalNodes()
+            count = handler.mission.state.currentMissionSize
             opaque_id = handler.mission.state.id.toLong()
             logger.d { "sendMissionCount: $count" }
         }
@@ -156,12 +156,11 @@ class NavigationController(
         val idx = itemMsg.seq
         logger.d { "sendMissionItem #$idx" }
         if (handler.mission.hasWaypointNodes()) {
-            val itemMsg = node2MissionItemMsg(idx)
-            client.sendMessage(itemMsg)
+            node2MissionItemMsg(idx)?.let { client.sendMessage(it) }
         }
     }
 
-    fun sendMissionClear() {
+    fun processMissionClear() {
         handler.missionClear()
         sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_ACCEPTED)
     }
@@ -178,8 +177,6 @@ class NavigationController(
         logger.d { "createNewMission" }
         val missionMsg = msg as msg_mission_count
 
-        if (!handler.mission.state.canCreateMission()) return
-
         // TODO: Stop mission execution first if needed
         numberOfExpectedItems = missionMsg.count
         currentRetryTimes = 0
@@ -189,9 +186,17 @@ class NavigationController(
         if (numberOfExpectedItems > 0) {
             // ask for the first item an iterate over count
             logger.d { "Creating new mission with ${missionMsg.count} items" }
-            // Request first mission item...
-            requestMissionItem(0)
-            // TODO: timeout waiting start?
+            val newMissionResult = handler.mission.createWaypointMission()
+            if (newMissionResult.hasError) {
+                sendStatusText(
+                    newMissionResult.errorReason,
+                    MAV_SEVERITY.MAV_SEVERITY_ERROR
+                )
+            } else {
+                // Request first mission item...
+                requestMissionItem(0)
+                // TODO: timeout guard start
+            }
         }
     }
 
@@ -221,7 +226,7 @@ class NavigationController(
         }
 
         // Store item and request next or upload the mission
-        val accepted = handler.mission.addWaypointNode(itemMsg)
+        val accepted = handler.mission.processItem(itemMsg)
         if (!accepted) {
             logger.w { "Unsupported mission command: ${itemMsg.command}" }
             sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_UNSUPPORTED)
@@ -235,20 +240,15 @@ class NavigationController(
             requestMissionItem(nextExpectedSeq)
         } else {
             // reached the end of the mission items
-            handler.mission.uploadWaypoints { result ->
-                if (result.hasError) {
-                    sendStatusText(
-                        result.errorReason,
-                        MAV_SEVERITY.MAV_SEVERITY_ERROR
-                    )
+            val canUploadResult = handler.mission.missionUploadReady()
+            sendAckAnswer(
+                if (canUploadResult.hasError) {
+                    sendStatusText(canUploadResult.errorReason, MAV_SEVERITY.MAV_SEVERITY_ERROR)
+                    MAV_MISSION_RESULT.MAV_MISSION_DENIED
                 } else {
-                    sendStatusText(
-                        "Successful mission upload",
-                        MAV_SEVERITY.MAV_SEVERITY_INFO
-                    )
+                    MAV_MISSION_RESULT.MAV_MISSION_ACCEPTED
                 }
-            }
-            sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_ACCEPTED)
+            )
         }
     }
 
@@ -261,8 +261,14 @@ class NavigationController(
 
     fun sendStatusText(status: String, severity: Int) = client.sendMessage(
         msg_statustext().apply {
-            logger.d { "sendStatusText" }
-            text = status.toByteArray()
+            logger.d { "sendStatusText $status" }
+            text = (
+                if ((status.length + 3) > 50) {
+                    status.take(47) + "..."
+                } else {
+                    status
+                }
+                ).toByteArray()
             this.severity = severity.toShort()
         }
     )
@@ -283,7 +289,7 @@ class NavigationController(
                 )
             )
         ) { result ->
-            logger.d { "missionStart: $result" }
+            if (result.hasError) logger.w { "Error on mission start: ${result.errorReason}" }
         }
     }
 
@@ -339,13 +345,11 @@ class NavigationController(
 
     fun msgMissionCurrent(): msg_mission_current = msg_mission_current().apply {
         seq = handler.mission.state.targetSequence
-        total = handler.mission.state.assembler.size()
+        total = handler.mission.state.currentMissionSize
         mission_id = handler.mission.state.id.toLong()
         mission_state = handler.mission.state.mavlink.toShort()
-        mission_mode = if (handler.mission.state.isActive()) 1 else 2
+        mission_mode = if (handler.mission.state.isActive) 1 else 2
     }
-
-    // TODO: start, pause, and resume procedures
 
     fun msgHomePosition(): MAVLinkMessage? = msg_home_position().apply {
         val homeLoc = handler.aircraft.state.homeCoordinates ?: return null

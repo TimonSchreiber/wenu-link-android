@@ -17,6 +17,7 @@ import org.WenuLink.adapters.mission.MissionCommand
 import org.WenuLink.adapters.mission.RepositionAction
 import org.WenuLink.adapters.mission.ReturnAction
 import org.WenuLink.adapters.mission.StartWaypointMission
+import org.WenuLink.adapters.mission.UploadWaypointMission
 import org.WenuLink.commands.CommandResult
 import org.WenuLink.commands.ICommand
 import org.WenuLink.commands.UnitResult
@@ -33,6 +34,10 @@ sealed interface RequestCommand : ICommand<WenuLinkHandler> {
     override suspend fun execute(ctx: WenuLinkHandler): UnitResult
     override suspend fun onStop(ctx: WenuLinkHandler)
 }
+
+/**
+ * Aircraft related classes
+ */
 
 open class RequestTransition(open val transition: StateTransition) : RequestCommand {
     override fun validate(ctx: WenuLinkHandler): UnitResult =
@@ -97,6 +102,10 @@ data class RequestTakeoff(val altitude: Float = 2f, val timeout: Long = 15_000L)
     }
 }
 
+/**
+ * Mission related classes
+ */
+
 data class RequestStartMission(
     private val startSequence: Int,
     private val endSequence: Int,
@@ -112,8 +121,9 @@ data class RequestStartMission(
         val homeResult = checkHomePosition(ctx)
         if (homeResult.hasError) return homeResult
 
-        // Handle initial transitions
-        super.execute(ctx)
+        // upload mission
+        val uploadResult = ctx.dispatchAndAwait(WenuLinkCommand.Mission(UploadWaypointMission(3)))
+        if (uploadResult.hasError) return uploadResult
 
         val authorityResult = ctx.dispatchControlAuthority(ControlAuthorityType.WAYPOINT_MISSION)
         if (authorityResult.hasError) return authorityResult
@@ -123,12 +133,15 @@ data class RequestStartMission(
         val startResult = ctx.dispatchAndAwait(WenuLinkCommand.Mission(StartWaypointMission))
         if (startResult.hasError) return startResult
 
+        // Handle initial transitions
+        super.execute(ctx)
+
         // Wait arm and takeoff
         val takeoffOk = ctx.aircraft.waitFlightState(true, 15_000L)
         if (!takeoffOk) return CommandResult.error("Vehicle did not takeoff!")
 
         // Wait initial altitude for mission start (5min top)
-        val initOk = ctx.mission.waitMissionStart(300_000L)
+        val initOk = ctx.mission.waitInitialWaypoint(300_000L)
         if (!initOk) return CommandResult.error("Mission did not start!")
 
         // Handle final transition

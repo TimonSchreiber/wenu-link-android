@@ -30,107 +30,141 @@ sealed interface MissionCommand : ICommand<MissionHandler> {
     override suspend fun onStop(ctx: MissionHandler)
 }
 
-data class UploadMissionCommand(
-    private val assembler: MissionAssembler,
-    private val flightSpeed: Float = 5f
-) : MissionCommand {
+data class UploadWaypointMission(val maxTries: Int = 3) : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.canCreateMission() -> CommandResult.ok
-        else -> CommandResult.error("Upload not ready")
+        !ctx.state.uploadReady -> CommandResult.error("No mission found")
+        !ctx.state.hasAssembler -> CommandResult.error("No mission assembler")
+        !ctx.state.canUploadMission -> CommandResult.error("Not ready to upload")
+        else -> CommandResult.ok
     }
 
-    override suspend fun execute(ctx: MissionHandler): UnitResult =
-        suspendCancellableCoroutine { cont ->
-            MissionManager.uploadMission(assembler.build(), flightSpeed) { _, error ->
+    suspend fun tryUpload(ctx: MissionHandler): UnitResult = suspendCancellableCoroutine { cont ->
+        ctx.state.assembler?.let {
+            ctx.setUploadingMission(true)
+            MissionManager.uploadMission(it.build(), ctx.flightSpeed) { _, error ->
+                ctx.setUploadingMission(false)
+                ctx.syncState()
                 cont.resume(if (error == null) CommandResult.ok else CommandResult.error(error))
-            }
-
-            cont.invokeOnCancellation {
-                // Add SDK cancel if available
             }
         }
 
-    override suspend fun onStop(ctx: MissionHandler) = MissionManager.clearMission()
+        cont.invokeOnCancellation {
+            // Add SDK cancel if available
+            ctx.setUploadingMission(false)
+        }
+    }
+    override suspend fun execute(ctx: MissionHandler): UnitResult {
+        val maxAttempts = maxTries.coerceAtLeast(1)
+        var attempt = 0
+        var result: UnitResult = CommandResult.error("No upload attempted")
+        while (result.hasError && attempt < maxAttempts) {
+            result = tryUpload(ctx)
+            attempt++
+        }
+        return result
+    }
+
+    override suspend fun onStop(ctx: MissionHandler) {
+        // TODO: SDK mission cancelUploading
+        MissionManager.clearMission()
+        ctx.setUploadingMission(false)
+    }
 }
 
 data object StartWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.canCreateMission() -> CommandResult.error("No mission found")
-        ctx.state.isActive() -> CommandResult.error("Already started")
-        ctx.state.canStartMission() -> CommandResult.ok
-        else -> CommandResult.error("Not ready")
+        ctx.state.canUploadMission -> CommandResult.error("No mission found")
+        ctx.state.isActive -> CommandResult.error("Already started")
+        ctx.state.canStartMission -> CommandResult.ok
+        else -> CommandResult.error("Unable to start")
     }
 
-    override suspend fun execute(ctx: MissionHandler): UnitResult =
-        suspendCancellableCoroutine { cont ->
+    override suspend fun execute(ctx: MissionHandler): UnitResult {
+        val startResult = suspendCancellableCoroutine { cont ->
             MissionManager.startMission { error ->
                 cont.resume(if (error == null) CommandResult.ok else CommandResult.error(error))
             }
 
             cont.invokeOnCancellation {
-                // Add SDK cancel if available
             }
         }
+        if (startResult.hasError) return startResult
 
-    override suspend fun onStop(ctx: MissionHandler) = ctx.dispatchCommand(PauseWaypointMission)
+        val isActive = ctx.waitMissionStart(15_000L)
+        return if (isActive) CommandResult.ok else CommandResult.error("Start mission timeout")
+    }
+
+    override suspend fun onStop(ctx: MissionHandler) = ctx.dispatchCommand(StopWaypointMission)
 }
 
 data object PauseWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.isActive() -> CommandResult.ok
+        ctx.state.isActive -> CommandResult.ok
         else -> CommandResult.error("Not started")
     }
 
-    override suspend fun execute(ctx: MissionHandler): UnitResult =
-        suspendCancellableCoroutine { cont ->
+    override suspend fun execute(ctx: MissionHandler): UnitResult {
+        val pauseResult = suspendCancellableCoroutine { cont ->
             MissionManager.pauseMission { error ->
                 cont.resume(if (error == null) CommandResult.ok else CommandResult.error(error))
             }
 
             cont.invokeOnCancellation {
-                // Add SDK cancel if available
             }
         }
+        if (pauseResult.hasError) return pauseResult
+
+        val isPaused = ctx.waitMissionPause(15_000L)
+        return if (isPaused) CommandResult.ok else CommandResult.error("Pause mission timeout")
+    }
 
     override suspend fun onStop(ctx: MissionHandler) { }
 }
 
 data object ResumeWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.isPaused() -> CommandResult.ok
+        ctx.state.isPaused -> CommandResult.ok
         else -> CommandResult.error("Already in execution")
     }
 
-    override suspend fun execute(ctx: MissionHandler): UnitResult =
-        suspendCancellableCoroutine { cont ->
+    override suspend fun execute(ctx: MissionHandler): UnitResult {
+        val resumeResult = suspendCancellableCoroutine { cont ->
             MissionManager.resumeMission { error ->
                 cont.resume(if (error == null) CommandResult.ok else CommandResult.error(error))
             }
 
             cont.invokeOnCancellation {
-                // Add SDK cancel if available
             }
         }
+        if (resumeResult.hasError) return resumeResult
+
+        val isResumed = ctx.waitMissionStart(15_000L)
+        return if (isResumed) CommandResult.ok else CommandResult.error("Resume mission timeout")
+    }
 
     override suspend fun onStop(ctx: MissionHandler) { }
 }
 
 data object StopWaypointMission : MissionCommand {
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        !ctx.state.canCreateMission() -> CommandResult.ok
+        !ctx.state.canUploadMission -> CommandResult.ok
         else -> CommandResult.error("Nothing to stop")
     }
 
-    override suspend fun execute(ctx: MissionHandler): UnitResult =
-        suspendCancellableCoroutine { cont ->
+    override suspend fun execute(ctx: MissionHandler): UnitResult {
+        val stopResult = suspendCancellableCoroutine { cont ->
             MissionManager.stopMission { error ->
                 cont.resume(if (error == null) CommandResult.ok else CommandResult.error(error))
             }
 
             cont.invokeOnCancellation {
-                // Add SDK cancel if available
             }
         }
+        if (stopResult.hasError) return stopResult
+
+        val isStop = ctx.waitMissionComplete(5000L)
+        return if (isStop) CommandResult.ok else CommandResult.error("Stop mission timeout")
+    }
 
     override suspend fun onStop(ctx: MissionHandler) { }
 }
@@ -188,7 +222,7 @@ data class DelayAction(val timeMillis: Long) : MissionActionCommand {
     }
 
     override fun validate(ctx: MissionHandler): UnitResult = when {
-        ctx.state.isActive() -> CommandResult.error("Busy")
+        ctx.state.isActive -> CommandResult.error("Busy")
         else -> CommandResult.ok
     }
 

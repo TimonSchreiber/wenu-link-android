@@ -138,9 +138,12 @@ data class NavWaypointMissionItem(
         altitude = msg.z
     )
 
-    fun toMavLink(seq: Int): msg_mission_item_int = msg_mission_item_int().apply {
+    fun toMavLink(
+        seq: Int,
+        frame: Int = MAV_FRAME.MAV_FRAME_GLOBAL_RELATIVE_ALT
+    ): msg_mission_item_int = msg_mission_item_int().apply {
         this.seq = seq
-        frame = MAV_FRAME.MAV_FRAME_GLOBAL_RELATIVE_ALT.toShort()
+        this.frame = frame.toShort()
         command = MAV_CMD.MAV_CMD_NAV_WAYPOINT
         mission_type = MAV_MISSION_TYPE.MAV_MISSION_TYPE_MISSION.toShort()
         param1 = holdTimeSec

@@ -58,9 +58,7 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
         val isAllowed = stateMachine.isModeAllowed(mode)
 
         if (isAllowed.hasError) {
-            return CommandResult.error(
-                "Mode $mode not allowed: ${isAllowed.errorReason}"
-            )
+            return CommandResult.error("Mode $mode not allowed: ${isAllowed.errorReason}")
         }
 
         logger.d { "Mode change: ${state.flightMode} -> $mode" }
@@ -69,31 +67,6 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
 
         return CommandResult.ok
     }
-
-    private fun enforceModeConsistency() {
-        if (stateMachine.isModeAllowed(state.flightMode).hasError) {
-            stateMachine.syncArmState()
-            return
-        }
-
-        val fallbackMode = if (state.isFlying()) {
-            ArduCopterFlightMode.GUIDED
-        } else {
-            ArduCopterFlightMode.STABILIZE
-        }
-
-        logger.w {
-            "Mode ${state.flightMode} invalid for state ${state.mavlink}, fallback to $fallbackMode"
-        }
-
-        stateMachine.updateFlightMode(fallbackMode)
-    }
-
-    fun canDispatchTransition(transition: StateTransition): UnitResult =
-        stateMachine.canDispatch(transition)
-
-    fun dispatchTransition(transition: StateTransition): AircraftState =
-        stateMachine.dispatch(transition)
 
     fun syncSensors(sensorsInterval: Long = 1000L) {
         if (isPowerOff) return
@@ -107,18 +80,10 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
     }
 
     fun syncState() {
-        // Check for armed and flying conditions to update the last
-        val fcState = state.resolveFrom(
+        stateMachine.sync(
             currentTelemetry?.motorsOn ?: false,
             currentTelemetry?.isFlying ?: false
         )
-
-        // Force new logic state update only when different
-        if (!stateMachine.hasStateChanged(fcState)) return
-
-        logger.i { "New aircraft state: $fcState" }
-
-        stateMachine.forceSet(fcState)
     }
 
     private suspend fun loadParameters(timeout: Long = 5000L): Boolean {
@@ -257,11 +222,14 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
     }
 
     fun takeOff() {
+        // sync and check for already-airborne cases
+        if (state.isFlying()) {
+            logger.w { "Takeoff called but aircraft already airborne, skipping" }
+            return
+        }
         logger.d { "Aircraft taking off" }
         FCManager.startTakeoff { error ->
-            if (error != null) {
-                logger.w { "Takeoff error: $error" }
-            }
+            if (error != null) logger.e { "Takeoff error: $error" }
         }
     }
 

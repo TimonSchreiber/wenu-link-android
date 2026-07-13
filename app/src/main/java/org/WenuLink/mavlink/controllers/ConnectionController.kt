@@ -165,7 +165,6 @@ class ConnectionController(
         battery_remaining = battery.batteryRemaining
         voltage_battery = battery.voltagesBattery
         current_battery = battery.currentBatteryRaw
-//        client.sendMessage(msg)
     }
 
     fun msgAttitude(): MAVLinkMessage? = msg_attitude().apply {
@@ -243,7 +242,6 @@ class ConnectionController(
         voltages = battery.voltages.toIntArray()
         battery_remaining = battery.batteryRemaining
         current_battery = battery.currentBattery
-//        client.sendMessage(msg)
     }
 
     fun msgExtendedSys(): MAVLinkMessage = msg_extended_sys_state().apply {

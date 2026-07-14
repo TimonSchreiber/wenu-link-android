@@ -116,10 +116,26 @@ object MissionManager {
             rtlWhenFinish = mission.rtlWhenFinish
         ) ?: return onResult(false, "Builder error")
 
-        mission.nodes.forEach { node ->
+        for (node in mission.nodes) {
             when (node) {
+                is MissionNode.Home -> {
+                    // ArduPilot home item: reference data only, never a DJI waypoint.
+                    // Its altitude is AMSL and must not reach the SDK.
+                }
+
                 is MissionNode.Takeoff -> {
-                    // No need to process taking off
+                    // Materialize the takeoff as the first DJI waypoint so the initial climb
+                    // (gotoFirstWaypointMode SAFELY) targets the requested takeoff altitude instead
+                    // of the first waypoint's altitude.
+                    val coordinates = node.coordinates3D
+                    if (coordinates.lat == 0.0 && coordinates.long == 0.0) {
+                        // MAVLink allows (0, 0) meaning "current location"; resolving that needs
+                        // the home position which this layer does not have.
+                        return onResult(false, "Takeoff item without coordinates is unsupported")
+                    }
+                    builder.addWaypoint(
+                        Waypoint(coordinates.lat, coordinates.long, coordinates.alt)
+                    )
                 }
 
                 is MissionNode.Land -> {
@@ -137,7 +153,7 @@ object MissionManager {
             }
         }
 
-        builder.waypointCount(mission.nWaypoints)
+        builder.waypointCount(builder.waypointList.size)
         operator.loadMission(builder.build())
             ?.let { onResult(false, it.description) }
             ?: uploadWaypointMission(onResult)

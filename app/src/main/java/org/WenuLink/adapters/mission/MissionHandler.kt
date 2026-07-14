@@ -220,12 +220,13 @@ class MissionHandler : CommandHandler<MissionHandler>() {
         return UnitResult.ok
     }
 
-    fun processItem(itemMsg: msg_mission_item_int): Boolean {
-        if (!state.hasAssembler) {
+    fun processItem(itemMsg: msg_mission_item_int): ItemAssemblyResult {
+        val assembler = state.assembler
+        if (assembler == null) {
             logger.w { "processItem called without assembler, item ${itemMsg.command} dropped" }
-            return false
+            return ItemAssemblyResult.NoActiveMission
         }
-        return state.assembler?.addWaypointNode(itemMsg) ?: false
+        return assembler.addWaypointNode(itemMsg)
     }
 
     fun getWaypointNode(index: Int): MissionNode? = state.assembler?.getNode(index)

@@ -19,6 +19,7 @@ import com.MAVLink.common.msg_mission_request_list
 import com.MAVLink.common.msg_statustext
 import com.MAVLink.enums.GPS_FIX_TYPE
 import com.MAVLink.enums.MAV_CMD
+import com.MAVLink.enums.MAV_FRAME
 import com.MAVLink.enums.MAV_MISSION_RESULT
 import com.MAVLink.enums.MAV_MISSION_TYPE
 import com.MAVLink.enums.MAV_RESULT
@@ -30,6 +31,7 @@ import org.WenuLink.adapters.RequestMissionAction
 import org.WenuLink.adapters.RequestStartMission
 import org.WenuLink.adapters.WenuLinkCommand
 import org.WenuLink.adapters.WenuLinkHandler
+import org.WenuLink.adapters.mission.ItemAssemblyResult
 import org.WenuLink.adapters.mission.MissionNode
 import org.WenuLink.adapters.mission.RepositionAction
 import org.WenuLink.mavlink.MAVLinkClient
@@ -109,6 +111,12 @@ class NavigationController(
         val node = handler.mission.getWaypointNode(nIdx) ?: return null
         val coordinates = node.coordinates3D
         return when (node) {
+            is MissionNode.Home -> NavWaypointMissionItem(
+                latitude = coordinates.lat,
+                longitude = coordinates.long,
+                altitude = coordinates.alt
+            ).toMavLink(nIdx, MAV_FRAME.MAV_FRAME_GLOBAL)
+
             is MissionNode.Takeoff -> NavTakeoffMissionItem(
                 latitude = coordinates.lat,
                 longitude = coordinates.long,
@@ -226,12 +234,27 @@ class NavigationController(
         }
 
         // Store item and request next or upload the mission
-        val accepted = handler.mission.processItem(itemMsg)
-        if (!accepted) {
-            logger.w { "Unsupported mission command: ${itemMsg.command}" }
-            sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_UNSUPPORTED)
-            return
+        when (handler.mission.processItem(itemMsg)) {
+            ItemAssemblyResult.Accepted -> Unit
+
+            ItemAssemblyResult.UnsupportedCommand -> {
+                logger.w { "Unsupported mission command: ${itemMsg.command}" }
+                sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_UNSUPPORTED)
+                return
+            }
+
+            ItemAssemblyResult.UnsupportedFrame -> {
+                logger.w { "Unsupported frame ${itemMsg.frame} for command ${itemMsg.command}" }
+                sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_UNSUPPORTED_FRAME)
+                return
+            }
+
+            ItemAssemblyResult.NoActiveMission -> {
+                sendAckAnswer(MAV_MISSION_RESULT.MAV_MISSION_ERROR)
+                return
+            }
         }
+
         ackReceivedItem(nextExpectedSeq)
         nextExpectedSeq += 1
 

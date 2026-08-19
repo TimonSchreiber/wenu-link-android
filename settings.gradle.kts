@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "WenuLink"
 include(":app")
+include(":state-model")

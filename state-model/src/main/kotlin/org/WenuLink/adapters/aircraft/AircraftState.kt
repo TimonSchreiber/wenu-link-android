@@ -110,7 +110,7 @@ object StandbyTransition : StateTransition {
     )
 }
 
-object ArmTransition : StateTransition {
+data class ArmTransition(val at: Long) : StateTransition {
     // TODO: update with modes from https://ardupilot.org/copter/docs/arming_the_motors.html
     override fun canTransition(from: AircraftState): UnitResult = when {
         !from.isStandBy() -> CommandResult.error("Not ready to arm")
@@ -118,7 +118,7 @@ object ArmTransition : StateTransition {
     }
 
     override fun reduce(from: AircraftState): AircraftState =
-        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armTimestamp = System.currentTimeMillis())
+        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armTimestamp = at)
 }
 
 object TakeoffTransition : StateTransition {
@@ -207,7 +207,7 @@ data class FlightModeTransition(private val flightMode: ArduCopterFlightMode) : 
  * Single source of truth for MAVLink + landed state transitions.
  * FSM / Reducer pattern.
  */
-class AircraftStateMachine {
+class AircraftStateMachine(private val clock: Clock = SystemClock) {
     var state = AircraftState()
         private set
 
@@ -244,7 +244,7 @@ class AircraftStateMachine {
         val fcState = state.resolveFrom(isArmed, isFlying)
         when {
             // RC trigger arm while on ground: advance to armed
-            fcState.isArmed() && state.isOnTheGround() -> dispatch(ArmTransition)
+            fcState.isArmed() && state.isOnTheGround() -> dispatch(ArmTransition(clock.now()))
 
             // Armed and on ground: advance to takeoff
             fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() ->

@@ -3,7 +3,6 @@ package org.WenuLink.adapters.aircraft
 import com.MAVLink.enums.MAV_LANDED_STATE
 import com.MAVLink.enums.MAV_MODE_FLAG
 import com.MAVLink.enums.MAV_STATE
-import io.getstream.log.taggedLogger
 import org.WenuLink.commands.CommandResult
 import org.WenuLink.commands.UnitResult
 
@@ -209,14 +208,12 @@ data class FlightModeTransition(private val flightMode: ArduCopterFlightMode) : 
  * FSM / Reducer pattern.
  */
 class AircraftStateMachine {
-    private val logger by taggedLogger(AircraftStateMachine::class.java.simpleName)
     var state = AircraftState()
         private set
 
     fun canDispatch(event: StateTransition): UnitResult = event.canTransition(state)
 
     fun dispatch(event: StateTransition): AircraftState {
-        logger.d { "StateTransition: $event" }
         state = event.reduce(state)
         return updateArmFlag()
     }

@@ -22,10 +22,6 @@ ktlint {
     reporters {
         reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
     }
-
-    filter {
-        exclude("**/com/MAVLink/**")
-    }
 }
 
 android {
@@ -127,6 +123,11 @@ android {
 }
 
 dependencies {
+    // --- Modules ---
+    implementation(project(":mavlink"))
+    // implementation(project(":state-model"))
+
+    // --- androidx ---
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

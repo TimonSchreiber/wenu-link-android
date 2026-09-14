@@ -239,32 +239,33 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
     fun isModeAllowed(mode: ArduCopterFlightMode): UnitResult =
         canDispatch(FlightModeTransition(mode))
 
-    fun sync(isArmed: Boolean, isFlying: Boolean) {
+    fun sync(isArmed: Boolean, isFlying: Boolean): StateTransition? {
         // Check state and dispatch state transitions accordingly
         val fcState = state.resolveFrom(isArmed, isFlying)
-        when {
+
+        val transition: StateTransition? = when {
             // RC trigger arm while on ground: advance to armed
-            fcState.isArmed() && state.isOnTheGround() -> dispatch(ArmTransition(clock.now()))
+            fcState.isArmed() && state.isOnTheGround() -> ArmTransition(clock.now())
 
             // Armed and on ground: advance to takeoff
-            fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() ->
-                dispatch(TakeoffTransition)
+            fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() -> TakeoffTransition
 
             // Taking off and now flying: advance to flying
-            fcState.isArmed() && fcState.isFlying() && state.isTakingOff() ->
-                dispatch(FlyingTransition)
+            fcState.isArmed() && fcState.isFlying() && state.isTakingOff() -> FlyingTransition
 
             // Disarmed and grounded: return to standby
-            !fcState.isArmed() && !fcState.isFlying() && !state.armRequested ->
-                dispatch(StandbyTransition)
+            !fcState.isArmed() && !fcState.isFlying() && !state.armRequested -> StandbyTransition
 
             // Catch unsuccessful arm
-            !fcState.isArmed() && state.armRequested -> {
-                if ((state.armTimestamp - System.currentTimeMillis()) > 10_000) {
-                    dispatch(StandbyTransition)
-                }
-            }
+            !fcState.isArmed() &&
+                state.armRequested &&
+                (state.armTimestamp - clock.now()) > 10_000 -> StandbyTransition
+
+            else -> null
         }
+
+        transition?.let { dispatch((it)) }
+        return transition
     }
 }
 

@@ -26,6 +26,7 @@ import org.WenuLink.adapters.WenuLinkHandler
 import org.WenuLink.adapters.WenuLinkService
 import org.WenuLink.commands.CommandResult
 import org.WenuLink.commands.UnitResult
+import org.WenuLink.debug.DisarmTrigger
 import org.WenuLink.sdk.APIManager
 
 class WenuLinkApp : Application() {
@@ -148,6 +149,7 @@ class WenuLinkApp : Application() {
         } else {
             registerReceiver(usbReceiver, filter)
         }
+        DisarmTrigger.register(this)
     }
 
     fun launchWenulinkService() {

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import org.WenuLink.adapters.AsyncUtils
 import org.WenuLink.commands.IHandler
+import org.WenuLink.debug.DisarmProbe
 import org.WenuLink.sdk.AircraftManager
 import org.WenuLink.sdk.FCManager
 import org.WenuLink.sdk.RCManager
@@ -77,9 +78,15 @@ class TelemetryHandler : IHandler<TelemetryHandler> {
     fun registerSimState(register: Boolean) {
         // Always clear first
         SimManager.unregisterStateCallback()
+        FCManager.unregisterStateCallback()
         if (register) {
             SimManager.registerStateCallback { state ->
+                DisarmProbe.logSim(state)
                 updateTelemetryData(SimManager.state2Telemetry(state, lastTelemetryData))
+            }
+            // Probe only: record the FC source in parallel, not fed into telemetry
+            FCManager.registerStateCallback { state ->
+                DisarmProbe.logFc(state)
             }
         }
     }
@@ -94,6 +101,7 @@ class TelemetryHandler : IHandler<TelemetryHandler> {
         FCManager.unregisterStateCallback()
         if (register) {
             FCManager.registerStateCallback { state ->
+                DisarmProbe.logFc(state)
                 // TODO: positionX,Y,Z values must be updated
                 updateTelemetryData(FCManager.state2Telemetry(state))
             }

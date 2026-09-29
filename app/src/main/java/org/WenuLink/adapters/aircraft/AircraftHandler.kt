@@ -6,6 +6,7 @@ import org.WenuLink.adapters.AsyncUtils
 import org.WenuLink.commands.CommandHandler
 import org.WenuLink.commands.CommandResult
 import org.WenuLink.commands.UnitResult
+import org.WenuLink.debug.DisarmProbe
 import org.WenuLink.parameters.ArduPilotParametersProvider
 import org.WenuLink.parameters.DJIParametersProvider
 import org.WenuLink.parameters.ParameterRegistry
@@ -80,10 +81,12 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
     }
 
     fun syncState() {
-        stateMachine.sync(
-            currentTelemetry?.motorsOn ?: false,
-            currentTelemetry?.isFlying ?: false
-        )
+        val telemetry = currentTelemetry
+        val isArmed = telemetry?.motorsOn ?: false
+        val isFlying = telemetry?.isFlying ?: false
+        val before = state
+        stateMachine.sync(isArmed, isFlying)
+        DisarmProbe.logSync(telemetry != null, isArmed, isFlying, before, state)
     }
 
     private suspend fun loadParameters(timeout: Long = 5000L): Boolean {
@@ -197,7 +200,9 @@ class AircraftHandler : CommandHandler<AircraftHandler>() {
 
     fun disarmMotors() {
         logger.d { "Disarming motors" }
+        DisarmProbe.logEvent("DISARM_SDK_CALL path=command")
         FCManager.disarmMotors { error ->
+            DisarmProbe.logEvent("DISARM_SDK_RESULT path=command error=${error ?: "none"}")
             if (error != null) {
                 logger.w { "Disarm error: $error" }
             }

@@ -17,6 +17,7 @@ import org.WenuLink.adapters.aircraft.ArmCommand
 import org.WenuLink.adapters.aircraft.DisarmCommand
 import org.WenuLink.adapters.mission.DelayAction
 import org.WenuLink.adapters.mission.RotateAction
+import org.WenuLink.debug.DisarmProbe
 import org.WenuLink.mavlink.MAVLinkClient
 import org.WenuLink.mavlink.messages.ComponentArmDisarmCommandLong
 import org.WenuLink.mavlink.messages.ConditionYawMessage
@@ -24,6 +25,9 @@ import org.WenuLink.mavlink.messages.DoSetModeCommandLong
 import org.WenuLink.mavlink.messages.MessageUtils
 import org.WenuLink.mavlink.messages.NavDelayMessage
 import org.WenuLink.mavlink.messages.NavTakeoffCommandLong
+import org.WenuLink.sdk.FCManager
+
+private const val FORCE_ARM_DISARM = 21196
 
 /**
  * MAVLinkController class to deal with the command service and related MAVLink messages.
@@ -129,10 +133,22 @@ class CommandController(override var client: MAVLinkClient, override val handler
 
     fun processArmDisarm(commandMsg: msg_command_long) {
         val params = ComponentArmDisarmCommandLong(commandMsg)
+        DisarmProbe.logEvent("ARM_DISARM_RECEIVED arm=${params.arm} force=${params.force}")
 
         if (params.arm == null) {
             logger.d { "Invalid arm/disarm request" }
             sendCommandAck(commandMsg.command, MAV_RESULT.MAV_RESULT_DENIED)
+            return
+        }
+
+        // Experiment: force disarm bypasses the state machine and calls DJI directly
+        if (!params.arm && params.force == FORCE_ARM_DISARM) {
+            logger.w { "Force disarm requested, bypassing state machine validation" }
+            DisarmProbe.logEvent("DISARM_SDK_CALL path=force")
+            FCManager.disarmMotors { error ->
+                DisarmProbe.logEvent("DISARM_SDK_RESULT path=force error=${error ?: "none"}")
+            }
+            sendCommandAck(commandMsg.command, MAV_RESULT.MAV_RESULT_ACCEPTED)
             return
         }
 
@@ -144,6 +160,10 @@ class CommandController(override var client: MAVLinkClient, override val handler
             DisarmCommand()
         }
         handler.dispatchCommand(WenuLinkCommand.Aircraft(command)) { result ->
+            DisarmProbe.logEvent(
+                "COMMAND_RESULT cmd=${command::class.simpleName} " +
+                    "ok=${result.isOk} reason=${result.errorReason}"
+            )
             if (result.hasError) logger.e { "Unable to $command: ${result.errorReason}" }
         }
 

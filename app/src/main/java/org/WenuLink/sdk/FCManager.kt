@@ -114,10 +114,10 @@ object FCManager {
         mInstance?.confirmLanding { SDKUtils.createCompletionCallback(onResult) }
 
     fun armMotors(onResult: (String?) -> Unit) =
-        mInstance?.turnOnMotors { SDKUtils.createCompletionCallback(onResult) }
+        mInstance?.turnOnMotors(SDKUtils.createCompletionCallback(onResult))
 
     fun disarmMotors(onResult: (String?) -> Unit) =
-        mInstance?.turnOffMotors { SDKUtils.createCompletionCallback(onResult) }
+        mInstance?.turnOffMotors(SDKUtils.createCompletionCallback(onResult))
 
     fun sensorState(sensorState: SensorState?): AppSensorState = when (sensorState) {
         SensorState.DISCONNECTED,

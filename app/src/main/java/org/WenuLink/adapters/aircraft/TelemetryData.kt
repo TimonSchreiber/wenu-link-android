@@ -234,8 +234,6 @@ object GPSMapper {
     }
 }
 
-data class Coordinates3D(val lat: Double, val long: Double, val alt: Float)
-
 data class MessageRate(
     val messageID: Int,
     var microSecondsInterval: Long,

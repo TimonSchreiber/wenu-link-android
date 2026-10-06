@@ -72,7 +72,7 @@ data class AircraftState(
 sealed interface StateTransition {
     fun canTransition(from: AircraftState): UnitResult
 
-    fun reduce(from: AircraftState): AircraftState
+    fun reduce(from: AircraftState, now: Long): AircraftState
 }
 
 object InitialTransition : StateTransition {
@@ -83,7 +83,7 @@ object InitialTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState =
+    override fun reduce(from: AircraftState, now: Long): AircraftState =
         from.copy(mavlink = MAV_STATE.MAV_STATE_UNINIT)
 }
 
@@ -93,7 +93,7 @@ object BootTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState =
+    override fun reduce(from: AircraftState, now: Long): AircraftState =
         from.copy(mavlink = MAV_STATE.MAV_STATE_BOOT)
 }
 
@@ -103,22 +103,22 @@ object StandbyTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState = from.copy(
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_STANDBY,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND,
         armTimestamp = 0
     )
 }
 
-data class ArmTransition(val at: Long) : StateTransition {
+object ArmTransition : StateTransition {
     // TODO: update with modes from https://ardupilot.org/copter/docs/arming_the_motors.html
     override fun canTransition(from: AircraftState): UnitResult = when {
         !from.isStandBy() -> CommandResult.error("Not ready to arm")
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState =
-        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armTimestamp = at)
+    override fun reduce(from: AircraftState, now: Long): AircraftState =
+        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armTimestamp = now)
 }
 
 object TakeoffTransition : StateTransition {
@@ -135,7 +135,7 @@ object TakeoffTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState =
+    override fun reduce(from: AircraftState, now: Long): AircraftState =
         from.copy(landed = MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF)
 }
 
@@ -145,7 +145,7 @@ object FlyingTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState =
+    override fun reduce(from: AircraftState, now: Long): AircraftState =
         from.copy(landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR, armTimestamp = 0)
 }
 
@@ -156,7 +156,7 @@ object LandTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState = from.copy(
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
     )
 }
@@ -168,7 +168,7 @@ object FlightTerminationTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState = from.copy(
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_FLIGHT_TERMINATION
     )
 }
@@ -180,7 +180,7 @@ object PowerOffTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState = from.copy(
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_POWEROFF
     )
 }
@@ -198,7 +198,7 @@ data class FlightModeTransition(private val flightMode: ArduCopterFlightMode) : 
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState): AircraftState = from.copy(
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         flightMode = this.flightMode
     )
 }
@@ -214,7 +214,7 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
     fun canDispatch(event: StateTransition): UnitResult = event.canTransition(state)
 
     fun dispatch(event: StateTransition): AircraftState {
-        state = event.reduce(state)
+        state = event.reduce(state, clock.now())
         return updateArmFlag()
     }
 
@@ -245,7 +245,7 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
 
         val transition: StateTransition? = when {
             // RC trigger arm while on ground: advance to armed
-            fcState.isArmed() && state.isOnTheGround() -> ArmTransition(clock.now())
+            fcState.isArmed() && state.isOnTheGround() -> ArmTransition
 
             // Armed and on ground: advance to takeoff
             fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() -> TakeoffTransition

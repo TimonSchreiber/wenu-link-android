@@ -8,29 +8,29 @@ import io.kotest.property.checkAll
 
 /**
  * E-06 Modeinvarianz des Abgleichs, Eigenschaftskatalog v1.0, Abschnitt 4:
- * "Der Abgleich von Telemetrie veraendert den gemeldeten Flugmodus nicht."
+ * "Der Abgleich von Telemetrie verändert den gemeldeten Flugmodus nicht."
  *
- * Formal: Fuer alle s in S und alle t in T gilt mit v = view(s) und v' = view(sync(s, t)):
+ * Formal: Für alle s in S und alle t in T gilt mit v = view(s) und v' = view(sync(s, t)):
  *   1. v'.customMode = v.customMode
- *   2. v'.baseMode ohne das Bit SAFETY_ARMED ist gleich v.baseMode ohne dieses Bit
+ *   2. v'.baseMode ohne das Bit SAFETY_ARMED ist gleich `v.baseMode` ohne dieses Bit
  *   3. das Bit MAV_MODE_FLAG_CUSTOM_MODE_ENABLED ist in v'.baseMode gesetzt
  *
  * Umsetzung:
- *   - Je Regel und je t in T ein Test, aus denselben Gruenden wie bei E-01 und E-05.
- *   - Wie bei E-05 wird ein einzelner sync an die erzeugte Folge angehaengt.
- *   - Loest sync keine Transition aus, bleibt der Zustand unveraendert und die Regeln 1 und 2
- *     gelten trivial. Die Statistik weist diesen Anteil aus. Welche Transitionen im uebrigen
+ *   - Je Regel und je t in T ein Test, aus denselben Gründen wie bei E-01 und E-05.
+ *   - Wie bei E-05 wird ein einzelner sync an die erzeugte Folge angehängt.
+ *   - Löst sync keine Transition aus, bleibt der Zustand unverändert und die Regeln 1 und 2
+ *     gelten trivial. Die Statistik weist diesen Anteil aus. Welche Übergänge im übrigen
  *     Anteil vorkommen, zeigt die Statistik von E-05; Generator und letzter Schritt sind
  *     dieselben.
- *   - Regel 3 prueft nur v'. Fehlt das Bit schon in v, scheitert sie auch ohne Zutun von sync,
+ *   - Regel 3 prüft nur v'. Fehlt das Bit schon in v, scheitert sie auch ohne Zutun von sync,
  *     etwa bei einer fehlerhaften Zuordnung von Flugmodus auf base_mode, die der Katalog in
- *     Abschnitt 1 ausdruecklich nicht erfasst. Ob das Bit vorher fehlte, zeigt die Spur.
+ *     Abschnitt 1 ausdrücklich nicht erfasst. Ob das Bit vorher fehlte, zeigt die Spur.
  */
 class SyncModeInvarianceSpec :
     StringSpec({
 
         for (t in Telemetry.all) {
-            "E-06 Regel 1, Abgleich mit $t: customMode bleibt unveraendert" {
+            "E-06 Regel 1, Abgleich mit $t: customMode bleibt unverändert" {
                 checkModeInvariance(t) { before, after ->
                     after.customMode shouldBe before.customMode
                 }
@@ -38,7 +38,7 @@ class SyncModeInvarianceSpec :
         }
 
         for (t in Telemetry.all) {
-            "E-06 Regel 2, Abgleich mit $t: baseMode ohne Arm-Bit bleibt unveraendert" {
+            "E-06 Regel 2, Abgleich mit $t: baseMode ohne Arm-Bit bleibt unverändert" {
                 checkModeInvariance(t) { before, after ->
                     withoutArmBit(after.baseMode) shouldBe withoutArmBit(before.baseMode)
                 }
@@ -55,8 +55,8 @@ class SyncModeInvarianceSpec :
     })
 
 /**
- * Prueft eine Regel fuer v = view(s) und v' = view(sync(s, t)), mit s aus eventSequence.
- * [rule] enthaelt genau eine Assertion.
+ * Prüft eine Regel für v = view(s) und v' = view(sync(s, t)), mit s aus eventSequence.
+ * [rule] enthält genau eine Assertion.
  */
 private suspend fun checkModeInvariance(
     t: Telemetry,
@@ -70,7 +70,7 @@ private suspend fun checkModeInvariance(
 
         val outcome = execution.trace.last().outcome
         val dispatched = outcome is Outcome.Synced && outcome.transition != null
-        collect(if (dispatched) "sync loest Transition aus" else "sync loest nichts aus")
+        collect(if (dispatched) "sync löst Transition aus" else "sync löst nichts aus")
 
         withClue({ execution.describe() }) {
             rule(before, after)

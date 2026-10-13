@@ -5,29 +5,29 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.property.checkAll
 
-/** Schranke k aus E-02: Standby -> Arm -> Takeoff -> Flying umfasst drei Transitionen. */
+/** Schranke k aus E-02: Standby → Arm → Takeoff → Flying umfasst drei Übergänge. */
 private const val K = 3
 
 /**
  * E-02 Konvergenz (Selbststabilisierung), Eigenschaftskatalog v1.0, Abschnitt 4:
  * "Aus jedem erreichbaren Zustand erreicht die Bridge unter konstant anliegender Telemetrie
- * innerhalb einer endlichen Anzahl von Abgleichschritten die fuer diese Telemetrie
+ * innerhalb einer endlichen Anzahl von Abgleichschritten die für diese Telemetrie
  * spezifizierte MAVLink-Sicht und verbleibt anschliessend in dieser Sicht."
  *
- * Formal: Fuer alle s in S, alle t in T_stable existiert ein n mit 0 <= n <= k, sodass fuer
+ * Formal: Für alle s in S, alle t in T_stable existiert ein n mit 0 ≤ n ≤ k, sodass für
  * alle m >= n gilt: π(view(sync^m(s, t))) = soll(t), mit k = 3.
  *
  * Umsetzung:
- *   - "Es gibt ein n <= k, ab dem fuer alle m >= n gilt" ist gleichwertig zu "fuer alle
- *     m >= k gilt": Jedes solche n laesst sich durch k ersetzen. Der Test fuehrt deshalb
- *     k + HORIZON Abgleichschritte aus und prueft die Schritte k bis k + HORIZON. Die
+ *   - "Es gibt ein n ≤ k, ab dem für alle m >= n gilt" ist gleichwertig zu "für alle
+ *     m >= k gilt": Jedes solche n lässt sich durch k ersetzen. Der Test führt deshalb
+ *     k + HORIZON Abgleichschritte aus und prüft die Schritte k bis k + HORIZON. Die
  *     Herleitung von HORIZON steht in Generators.kt.
- *   - Ein Abgleichschritt ist Event.Sync nach SYNC_INTERVAL_MS, wie in der Monitor-Schleife
- *     (Execution.monitorTick). Das ist die Lesart von Modellannahme M-1 fuer die Zeit.
+ *   - Ein Abgleichschritt ist `Event.Sync` nach SYNC_INTERVAL_MS, wie in der Monitor-Schleife
+ *     (Execution.monitorTick). Das ist die Lesart von Modellannahme M-1 für die Zeit.
  *   - Je t in T ein Test (T_stable = T nach A-01), damit Gegenbeispiele verschiedener
  *     Tabellenzeilen beim Shrinking nicht vermischt werden.
- *   - Die Statistik ordnet jede Ausfuehrung nach dem kleinsten n ein, ab dem die Sicht im
- *     Horizont bei soll(t) bleibt. "n = 0" heisst, s war bereits stabil.
+ *   - Die Statistik ordnet jede Ausführung nach dem kleinsten n ein, ab dem die Sicht im
+ *     Horizont bei `soll(t)` bleibt. "n = 0" heisst, s war bereits stabil.
  */
 class SyncConvergenceSpec :
     StringSpec({
@@ -55,12 +55,12 @@ class SyncConvergenceSpec :
         }
     })
 
-/** Einordnung fuer die Statistik nach dem kleinsten n, ab dem die Sicht bei [target] bleibt. */
+/** Einordnung für die Statistik nach dem kleinsten n, ab dem die Sicht bei [target] bleibt. */
 private fun convergenceClass(views: List<ProjectedView>, target: ProjectedView): String {
     val n = views.indexOfLast { it != target } + 1
     return when {
         n <= K -> "n = $n"
-        n < views.size -> "n > k, Sollsicht im Horizont erreicht"
-        else -> "Sollsicht am Ende des Horizonts nicht erreicht"
+        n < views.size -> "n > k, Soll-Sicht im Horizont erreicht"
+        else -> "Soll-Sicht am Ende des Horizonts nicht erreicht"
     }
 }

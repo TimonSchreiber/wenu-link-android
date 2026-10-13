@@ -8,22 +8,22 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.property.checkAll
 
 /**
- * E-05 Totalitaet, Eigenschaftskatalog v1.0, Abschnitt 4:
- * "Keine Ereignisfolge fuehrt zu einem undefinierten Zustand oder einer Ausnahme."
+ * E-05 Totalität, Eigenschaftskatalog v1.0, Abschnitt 4:
+ * "Keine Ereignisfolge führt zu einem undefinierten Zustand oder einer Ausnahme."
  *
- * Formal: Fuer alle s in S und alle t in T terminiert sync(s, t) ohne Ausnahme,
- * view(sync(s, t)) enthaelt weder MAV_STATE_UNINIT noch MAV_LANDED_STATE_UNDEFINED.
+ * Formal: Für alle s in S und alle t in T terminiert sync(s, t) ohne Ausnahme,
+ * view(sync(s, t)) enthält weder MAV_STATE_UNINIT noch MAV_LANDED_STATE_UNDEFINED.
  *
  * Umsetzung:
  *   - Je t in T ein Test, s kommt aus eventSequence. Die Folge kann mit einem Elapse enden,
- *     damit ist auch der zeitliche Abstand vor dem Abgleich frei gewaehlt.
- *   - Terminierung wird nicht eigens geprueft. sync und die Transitionen enthalten weder
- *     Schleifen noch Rekursion; ein Haengen fiele ueber das Timeout von Kotest auf.
+ *     damit ist auch der zeitliche Abstand vor dem Abgleich frei gewählt.
+ *   - Terminierung wird nicht eigens geprüft. sync und die Übergänge enthalten weder
+ *     Schleifen noch Rekursion; ein Hängen fiele über das Timeout von Kotest auf.
  *   - Eine Ausnahme aus dem abschliessenden sync wird abgefangen und als Verstoss gemeldet.
- *     Eine Ausnahme beim Herstellen von s laesst den Test direkt scheitern; das Shrinking
- *     kuerzt die Folge dann bis zu dem Ereignis, das sie ausloest.
- *   - Die Statistik zeigt, welche Transition der abschliessende Abgleich ausloest. Sie dient
- *     nur der Abdeckung, das Urteil faellt allein ueber die Sicht.
+ *     Eine Ausnahme beim Herstellen von s lässt den Test direkt scheitern; das Shrinking
+ *     kürzt die Folge dann bis zu dem Ereignis, das sie auslöst.
+ *   - Die Statistik zeigt, welche Transition der abschliessende Abgleich auslöst. Sie dient
+ *     nur der Abdeckung, das Urteil fällt allein über die Sicht.
  */
 class SyncTotalitySpec :
     StringSpec({
@@ -63,7 +63,7 @@ private fun undefinedFields(view: MavlinkView): List<String> {
     return fields
 }
 
-/** Name der Transition, die ein Abgleichschritt ausgeloest hat, fuer die Statistik. */
+/** Name der Transition, die ein Abgleichschritt ausgelöst hat, für die Statistik. */
 private fun dispatchedTransition(step: Step): String {
     val outcome = step.outcome
     if (outcome !is Outcome.Synced) {

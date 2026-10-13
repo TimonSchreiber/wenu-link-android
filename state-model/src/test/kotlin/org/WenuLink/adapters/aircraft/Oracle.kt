@@ -11,7 +11,7 @@ import com.MAVLink.enums.MAV_STATE
  *
  * Oracle rule: this file reads only the four published fields of AircraftState.
  * Internal predicates such as isArmed(), isFlying() or armRequested belong to the system
- * under test and must not appear here; otherwise they would be test object and yardstick
+ * under test and must not appear here; otherwise they would be test-object and yardstick
  * at once. The target mapping is written out from the catalog, not derived from the model.
  */
 

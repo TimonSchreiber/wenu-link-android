@@ -415,9 +415,9 @@ val conditionalConfig: PropTestConfig = catalogConfig.copy(
 internal fun reportCoverage(property: String, t: Telemetry, context: PropertyContext) {
     val checked = context.attempts()
     val discarded = context.evals() - checked
-    println("[$property $t] $checked Faelle geprueft, $discarded verworfen")
+    println("[$property $t] $checked Fälle geprüft, $discarded verworfen")
     if (checked < CHECKED_CASES) {
-        println("[$property $t] Leerstelle: weniger als $CHECKED_CASES Faelle im Budget erreicht")
+        println("[$property $t] Leerstelle: weniger als $CHECKED_CASES Fälle im Budget erreicht")
     }
 }
 

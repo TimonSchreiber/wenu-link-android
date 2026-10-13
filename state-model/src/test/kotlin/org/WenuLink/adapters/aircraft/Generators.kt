@@ -1,11 +1,14 @@
 package org.WenuLink.adapters.aircraft
 
+import io.kotest.common.ExperimentalKotest
 import io.kotest.property.Arb
+import io.kotest.property.Constraints
 import io.kotest.property.PropTestConfig
+import io.kotest.property.PropertyContext
 import io.kotest.property.Shrinker
 import io.kotest.property.ShrinkingMode
 import io.kotest.property.arbitrary.arbitrary
-import io.kotest.property.arbitrary.bind
+import io.kotest.property.arbitrary.boolean
 import io.kotest.property.arbitrary.choice
 import io.kotest.property.arbitrary.choose
 import io.kotest.property.arbitrary.constant
@@ -50,6 +53,14 @@ const val SYNC_INTERVAL_MS = 200L
  */
 const val ARM_TIMEOUT_MS = 10_000L
 
+/**
+ * Number of monitor steps over which "for all m >= n" is checked (E-02, E-04). A test can only
+ * check finitely many steps. The only time-dependent branch of sync is the arm timeout: if
+ * armTimestamp was set at the latest where the checked range starts, the timeout has expired
+ * within this many further steps, so a departure caused by it falls inside the range.
+ */
+const val HORIZON = (ARM_TIMEOUT_MS / SYNC_INTERVAL_MS).toInt() + 1
+
 /** Length range of generated event sequences. */
 private val SEQUENCE_LENGTH = 0..30
 
@@ -73,7 +84,7 @@ data class Telemetry(val isArmed: Boolean, val isFlying: Boolean) {
 }
 
 /**
- * Transitions that commands dispatch within the takeoff and landing cycle, modelled as
+ * Transitions that commands dispatch within the takeoff and landing cycle, modeled as
  * dispatch(τ) under canDispatch(τ) (catalog, section 1). Call sites in :app:
  *
  *  - ARM:     ArmCommand, RequestStartMission
@@ -94,19 +105,19 @@ enum class Command(val transition: StateTransition) {
     LAND(LandTransition)
 }
 
-/** An event that moves an execution within S, or lets time pass. */
+/** An event that moves an execution within S, or let's time pass. */
 sealed interface Event {
     /** Telemetry reconciliation by the monitor loop. */
     data class Sync(val telemetry: Telemetry) : Event {
         override fun toString(): String = "sync$telemetry"
     }
 
-    /** A command, modelled as dispatch(τ) under canDispatch(τ). */
+    /** A command, modeled as dispatch(τ) under canDispatch(τ). */
     data class Dispatch(val command: Command) : Event {
         override fun toString(): String = "dispatch($command)"
     }
 
-    /** A mode change, modelled as updateFlightMode(m) under isModeAllowed(m). */
+    /** A mode change, modeled as updateFlightMode(m) under isModeAllowed(m). */
     data class ModeChange(val mode: ArduCopterFlightMode) : Event {
         override fun toString(): String = "mode($mode)"
     }
@@ -227,13 +238,13 @@ class Execution private constructor(private val clock: ManualClock) {
         perform(Event.Sync(telemetry))
     }
 
-    /** The trace as text, for withClue: every event, its outcome and the full state afterwards. */
+    /** The trace as text, for withClue: every event, its outcome and the full state afterward. */
     fun describe(): String {
-        val lines = mutableListOf("start: ${render(initial)}")
+        val lines = mutableListOf("start: ${renderState(initial)}")
         for ((index, step) in steps.withIndex()) {
             lines.add(
                 "${index + 1}. t=+${step.at}ms ${step.event} -> ${render(step.outcome)} | " +
-                    render(step.after)
+                    renderState(step.after)
             )
         }
         return lines.joinToString("\n")
@@ -370,54 +381,248 @@ val eventSequence: Arb<List<Event>> = arbitrary(
 
 /**
  * Property test config for the catalog specs. Shrinking is unbounded so that counterexamples
- * are 1-minimal (see [EventSequenceShrinker]). It still terminates: the shrinker only removes
- * events and the Int shrinker for [Twins.insertAt] only lowers the value, so every accepted
- * step makes the input strictly smaller.
+ * are 1-minimal (see [EventSequenceShrinker]). It still terminates: every shrinker in this file
+ * only removes events, so every accepted step makes the input strictly shorter.
  */
+@OptIn(ExperimentalKotest::class)
 val catalogConfig: PropTestConfig = PropTestConfig(shrinkingMode = ShrinkingMode.Unbounded)
 
-// ---------------------------------------------------------------------------
-// E-03: executions with the same view and different internal bookkeeping
-// ---------------------------------------------------------------------------
-
-/** Two executions to be compared at the same point in time. */
-data class TwinExecutions(val first: Execution, val second: Execution)
+/** Number of cases checked per test for properties with a precondition (E-03, E-04). */
+const val CHECKED_CASES = 1000
 
 /**
- * The same event sequence executed twice, the second time with an extra delay of [skew]
- * inserted before position [insertAt]. Both executions see the same events, so their views
- * usually agree, while every arm after the insertion point gets a later timestamp.
+ * Generation budget per test for properties with a precondition. It suffices for
+ * [CHECKED_CASES] checked cases as long as at least 5 % of the generated cases meet the
+ * precondition. If it is used up, the test ends with fewer checked cases.
  */
-data class Twins(val events: List<Event>, val insertAt: Int, val skew: Long) {
-    fun delayedEvents(): List<Event> {
-        val at = minOf(insertAt, events.size)
-        return events.take(at) + Event.Elapse(skew) + events.drop(at)
-    }
+const val GENERATION_BUDGET = 20_000
 
-    /**
-     * Executes both sequences, then advances the first clock by [skew]. Without this, a
-     * difference after the next sync could stem from the two clocks instead of from the
-     * internal state.
-     */
-    fun reach(): TwinExecutions {
-        val first = Execution.reach(events)
-        first.perform(Event.Elapse(skew))
-        val second = Execution.reach(delayedEvents())
-        return TwinExecutions(first, second)
+/**
+ * Config for properties with a precondition: a test runs until [CHECKED_CASES] cases are
+ * checked or [GENERATION_BUDGET] cases are generated. Kotest's discard limit is switched off;
+ * instead the specs report checked and discarded cases with [reportCoverage].
+ */
+@OptIn(ExperimentalKotest::class)
+val conditionalConfig: PropTestConfig = catalogConfig.copy(
+    constraints = Constraints { it.attempts() < CHECKED_CASES && it.evals() < GENERATION_BUDGET },
+    maxDiscardPercentage = 100
+)
+
+/**
+ * Prints how many cases were checked and discarded, and flags a gap below [CHECKED_CASES].
+ * Only reached when no counterexample was found. The output is German like the test names.
+ */
+internal fun reportCoverage(property: String, t: Telemetry, context: PropertyContext) {
+    val checked = context.attempts()
+    val discarded = context.evals() - checked
+    println("[$property $t] $checked Faelle geprueft, $discarded verworfen")
+    if (checked < CHECKED_CASES) {
+        println("[$property $t] Leerstelle: weniger als $CHECKED_CASES Faelle im Budget erreicht")
     }
 }
 
-val twins: Arb<Twins> = Arb.bind(
-    eventSequence,
-    Arb.int(0..SEQUENCE_LENGTH.last),
-    anyElapse
-) { events, insertAt, skew -> Twins(events, insertAt, skew) }
+// ---------------------------------------------------------------------------
+// E-04: candidates for stable states
+// ---------------------------------------------------------------------------
+
+/**
+ * Command suffix that steers a sequence towards a state with π(view(s)) = soll(t), following
+ * the call patterns in AircraftCommands. It only shapes the distribution: whether the reached
+ * state is stable is decided by the oracle in the spec, and a wrong assumption here only shows
+ * up as a higher discard rate. There is deliberately no sync suffix: every candidate would then
+ * already have passed through sync(·, t), which hides violations on the first sync.
+ */
+private fun steeringSuffix(t: Telemetry): List<Event> = when {
+    // Row 3, ArmCommand and TakeoffCommand
+    t.isArmed && t.isFlying -> listOf(
+        Event.Dispatch(Command.ARM),
+        Event.Dispatch(Command.TAKEOFF),
+        Event.Dispatch(Command.FLYING)
+    )
+
+    // Row 2, ArmCommand
+    t.isArmed -> listOf(Event.Dispatch(Command.ARM))
+
+    // Rows 1 and 4 share their target view, DisarmCommand
+    else -> listOf(Event.Dispatch(Command.STANDBY))
+}
+
+/**
+ * Candidates for E-04 under telemetry [t]: half of the sequences are random as in
+ * [eventSequence], the other half end with the [steeringSuffix] for t. Both go through
+ * [EventSequenceShrinker], so suffix events can be shrunk away like any other event.
+ */
+fun stableCandidates(t: Telemetry): Arb<List<Event>> {
+    val suffix = steeringSuffix(t)
+    return arbitrary(
+        edgecases = canonicalSequences + canonicalSequences.map { it + suffix },
+        shrinker = EventSequenceShrinker
+    ) { _ ->
+        val prefix = eventSequence.bind()
+        val steered = Arb.boolean().bind()
+        if (steered) prefix + suffix else prefix
+    }
+}
+
+// ---------------------------------------------------------------------------
+// E-03: pairs of executions with the same view
+// ---------------------------------------------------------------------------
+
+/** Two executions to be compared at the same point in time. */
+data class ExecutionPair(val first: Execution, val second: Execution)
+
+/** Input for E-03: two event sequences whose end states are compared. */
+sealed interface ViewPair {
+    val first: List<Event>
+    val second: List<Event>
+
+    /**
+     * Executes both sequences, then advances the clock that is behind, so that both executions
+     * are compared at the same point in time. Otherwise, a difference after the next sync could
+     * stem from the clocks instead of from the internal state.
+     */
+    fun reach(): ExecutionPair {
+        val a = Execution.reach(first)
+        val b = Execution.reach(second)
+        if (a.elapsed < b.elapsed) {
+            a.perform(Event.Elapse(b.elapsed - a.elapsed))
+        }
+        if (b.elapsed < a.elapsed) {
+            b.perform(Event.Elapse(a.elapsed - b.elapsed))
+        }
+        return ExecutionPair(a, b)
+    }
+}
+
+/**
+ * The same event sequence twice, the second time with an extra delay of [skew] before position
+ * [insertAt]. Both executions see the same events, so their views usually agree, while every
+ * arm after the insertion point gets a later timestamp.
+ */
+data class Twins(val events: List<Event>, val insertAt: Int, val skew: Long) : ViewPair {
+    override val first: List<Event>
+        get() = events
+
+    override val second: List<Event>
+        get() {
+            val at = minOf(insertAt, events.size)
+            return events.take(at) + Event.Elapse(skew) + events.drop(at)
+        }
+}
+
+/**
+ * Two different event sequences. When their end states share a view, they may differ in more
+ * than timing, for instance in whether the arm was requested by a command or by sync.
+ */
+data class HistoryPair(override val first: List<Event>, override val second: List<Event>) :
+    ViewPair
+
+/**
+ * Shrinks a [ViewPair] with [EventSequenceShrinker]: for [Twins] the shared sequence, so that
+ * both executions keep seeing the same events, for a [HistoryPair] one sequence at a time. A
+ * history pair additionally gets candidates that remove the same event from the common end of
+ * both sequences at once. Without them, an event that both need for equal views, such as a
+ * shared mode change, could never be removed: taking it from one sequence alone breaks the
+ * precondition. A shrunk pair is 1-minimal with respect to all three kinds of removal.
+ */
+private object ViewPairShrinker : Shrinker<ViewPair> {
+    override fun shrink(value: ViewPair): List<ViewPair> = when (value) {
+        is Twins -> EventSequenceShrinker.shrink(value.events).map { value.copy(events = it) }
+
+        is HistoryPair -> {
+            val firstShrunk = EventSequenceShrinker.shrink(value.first).map {
+                value.copy(first = it)
+            }
+            val secondShrunk = EventSequenceShrinker.shrink(value.second).map {
+                value.copy(second = it)
+            }
+            firstShrunk + secondShrunk + commonEndRemovals(value)
+        }
+    }
+
+    /** Removes the k-th event from the end of both sequences, for every k within their common end. */
+    private fun commonEndRemovals(value: HistoryPair): List<ViewPair> {
+        val candidates = mutableListOf<ViewPair>()
+        var k = 1
+        while (k <= value.first.size && k <= value.second.size) {
+            val i = value.first.size - k
+            val j = value.second.size - k
+            if (value.first[i] != value.second[j]) {
+                break
+            }
+            candidates.add(
+                HistoryPair(
+                    value.first.take(i) + value.first.drop(i + 1),
+                    value.second.take(j) + value.second.drop(j + 1)
+                )
+            )
+            k++
+        }
+        return candidates
+    }
+}
+
+/** Length range of the suffix that both sequences of a [HistoryPair] share. */
+private val SHARED_SUFFIX_LENGTH = 0..10
+
+/**
+ * Candidates for E-03: half [Twins], half [HistoryPair]. Twins reach equal views reliably and
+ * vary the arm timestamps. A history pair consists of two independent prefixes followed by a
+ * shared suffix: the suffix tends to bring both executions to the same view, while the
+ * prefixes leave different internal state behind. Fully independent sequences share a view
+ * far less often (suffix length 0 still covers them). The edge cases shift each canonical
+ * sequence by just over [ARM_TIMEOUT_MS], so that only one of the twins is past the timeout
+ * when compared.
+ */
+val viewPairs: Arb<ViewPair> = arbitrary(
+    edgecases = canonicalSequences.map { Twins(it, insertAt = 0, skew = ARM_TIMEOUT_MS + 1) },
+    shrinker = ViewPairShrinker
+) { _ ->
+    val twins = Arb.boolean().bind()
+    if (twins) {
+        Twins(eventSequence.bind(), Arb.int(0..SEQUENCE_LENGTH.last).bind(), anyElapse.bind())
+    } else {
+        val suffixLength = Arb.int(SHARED_SUFFIX_LENGTH).bind()
+        val suffix = List(suffixLength) { anyEvent.bind() }
+        HistoryPair(eventSequence.bind() + suffix, eventSequence.bind() + suffix)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Rendering for traces
 // ---------------------------------------------------------------------------
 
-private fun render(state: AircraftState): String {
+/**
+ * The positions from [from] on where [values] differ from [target], grouped into runs of equal
+ * value, e.g. "m = 3..54: (ACTIVE, armed, ON_GROUND)". [index] names the position variable.
+ */
+internal fun <T> deviationRanges(
+    values: List<T>,
+    target: T,
+    from: Int,
+    index: String,
+    show: (T) -> String = { it.toString() }
+): List<String> {
+    val result = mutableListOf<String>()
+    var position = from
+    while (position < values.size) {
+        if (values[position] == target) {
+            position++
+            continue
+        }
+        val start = position
+        while (position + 1 < values.size && values[position + 1] == values[start]) {
+            position++
+        }
+        val range = if (start == position) "$start" else "$start..$position"
+        result.add("$index = $range: ${show(values[start])}")
+        position++
+    }
+    return result
+}
+
+/** A state with all fields, internal ones included, for traces and E-04b. */
+internal fun renderState(state: AircraftState): String {
     val armTimestamp = if (state.armTimestamp == 0L) {
         "none"
     } else {

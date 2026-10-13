@@ -17,7 +17,7 @@ import io.kotest.property.checkAll
  *   2. landed = MAV_LANDED_STATE_IN_AIR impliziert armed
  *
  * Umsetzung:
- *   - Geprueft wird jeder Zustand einer Ausfuehrung, nicht nur der letzte. Jedes Praefix einer
+ *   - Geprueft wird jeder Zustand einer Ausfuehrung, nicht nur der Letzte. Jedes Praefix einer
  *     zulaessigen Ereignisfolge ist selbst zulaessig, also liegt jeder Zwischenzustand in S.
  *   - Je Regel ein Test, damit das Shrinking Gegenbeispiele verschiedener Ursachen nicht
  *     vermischt.

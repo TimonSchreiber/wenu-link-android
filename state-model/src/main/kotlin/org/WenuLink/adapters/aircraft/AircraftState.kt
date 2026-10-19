@@ -65,7 +65,9 @@ data class AircraftState(
             MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
         } else {
             MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
-        }
+        },
+        // The flight controller reports no pending arm request
+        armTimestamp = 0
     )
 }
 

@@ -245,7 +245,7 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
 
         val transition: StateTransition? = when {
             // RC trigger arm while on ground: advance to armed
-            fcState.isArmed() && state.isOnTheGround() -> ArmTransition
+            fcState.isArmed() && !state.isArmed() && state.isOnTheGround() -> ArmTransition
 
             // Armed and on ground: advance to takeoff
             fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() -> TakeoffTransition

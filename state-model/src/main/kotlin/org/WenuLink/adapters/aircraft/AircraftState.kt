@@ -255,13 +255,13 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
             // Taking off and now flying: advance to flying
             fcState.isArmed() && fcState.isFlying() && state.isTakingOff() -> FlyingTransition
 
-            // Disarmed and grounded: return to standby
-            !fcState.isArmed() && !fcState.isFlying() && !state.armRequested -> StandbyTransition
+            // Disarmed: return to standby, also in the air (ArduCopter sets land_complete on disarm)
+            !fcState.isArmed() && !state.armRequested -> StandbyTransition
 
             // Catch unsuccessful arm
             !fcState.isArmed() &&
                 state.armRequested &&
-                (state.armTimestamp - clock.now()) > 10_000 -> StandbyTransition
+                (clock.now() - state.armTimestamp) > 10_000L -> StandbyTransition
 
             else -> null
         }

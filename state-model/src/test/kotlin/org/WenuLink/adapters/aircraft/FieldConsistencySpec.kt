@@ -8,12 +8,12 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.property.checkAll
 
 /**
- * E-01 Widerspruchsfreiheit der veröffentlichten Felder, Eigenschaftskatalog v1.0, Abschnitt 4:
+ * E-01 Widerspruchsfreiheit der veröffentlichten Felder, Eigenschaftskatalog v1.1, Abschnitt 4:
  * "Die telemetrie-bestimmten MAVLink-Felder stehen in keinem erreichbaren Zustand untereinander
  * im Widerspruch."
  *
  * Formal: Für alle s in S gilt mit (status, armed, landed) = π(view(s)):
- *   1. status = MAV_STATE_ACTIVE impliziert landed = MAV_LANDED_STATE_IN_AIR
+ *   1. status = MAV_STATE_ACTIVE impliziert landed ≠ MAV_LANDED_STATE_ON_GROUND
  *   2. landed = MAV_LANDED_STATE_IN_AIR impliziert armed
  *
  * Umsetzung:
@@ -30,7 +30,7 @@ import io.kotest.property.checkAll
 class FieldConsistencySpec :
     StringSpec({
 
-        "E-01 Regel 1: MAV_STATE_ACTIVE nur in der Luft" {
+        "E-01 Regel 1: MAV_STATE_ACTIVE nicht am Boden" {
             checkAll(catalogConfig, eventSequence) { events ->
                 val execution = Execution.reach(events)
                 val views = execution.projectedViews()
@@ -39,7 +39,9 @@ class FieldConsistencySpec :
                 collect(if (premiseReached) "ACTIVE erreicht" else "ACTIVE nie erreicht")
 
                 withClue({ execution.describe() }) {
-                    violations(views) { reportsActive(it) implies reportsInAir(it) }.shouldBeEmpty()
+                    violations(views) {
+                        reportsActive(it) implies !reportsOnGround(it)
+                    }.shouldBeEmpty()
                 }
             }
         }
@@ -77,5 +79,8 @@ private fun reportsActive(view: ProjectedView): Boolean =
 
 private fun reportsInAir(view: ProjectedView): Boolean =
     view.landedState == MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
+
+private fun reportsOnGround(view: ProjectedView): Boolean =
+    view.landedState == MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
 
 private infix fun Boolean.implies(other: Boolean): Boolean = !this || other

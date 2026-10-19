@@ -1,6 +1,6 @@
 # Eigenschaftskatalog
 
-**Version 1.0**
+**Version 1.1**
 
 Dieses Dokuments legt die Konsistenzeigenschaften fest, gegen die die Übersetzungslogik von WenuLink im Rahmen der Arbeit geprüft wird. Die Festschreibung erfolgt vor der systematischen Befundaufnahme. Änderungen werden über eine neue Versionsnummer, Datum, Begründung und einen Eintrag im Änderungsprotokoll dokumentiert.
 
@@ -56,9 +56,9 @@ Die Zielabbildung ist eine Aussage über `π(V)`, nicht über `V`. `baseMode` je
 | true  | true  | `MAV_STATE_ACTIVE`  | true  | `MAV_LANDED_STATE_IN_AIR` |
 | false | true  | `MAV_STATE_STANDBY` | false | `MAV_LANDED_STATE_ON_GROUND` |
 
-**Herleitung.** `GCS_MAVLINK_Copter::vehicle_system_status()` meldet `MAV_STATE_CRITICAL` bei ausgelöstem Failsafe, `MAV_STATE_STANDBY` bei gesetztem `land_complete` und sonst `MAV_STATE_ACTIVE`. Der Arm-Zustand geht darin nicht ein. Da Failsafe außerhalb des Geltungsbereichs liegt, gilt `MAV_STATE_ACTIVE` genau dann, wenn sich das Luftfahrzeug in der Luft befindet. Ein Copter am Boden meldet `MAV_STATE_STANDBY`, auch wenn er scharf ist. Das Bit `MAV_MODE_FLAG_SAFETY_ARMED` folgt dagegen unmittelbar dem Arm-Zustand, weshalb Zeile 2 `STANDBY` mit gesetztem Arm-Bit verbindet. Diese Kombination ist zulässig.
+**Herleitung.** `GCS_MAVLINK_Copter::vehicle_system_status()` meldet `MAV_STATE_CRITICAL` bei ausgelöstem Failsafe, `MAV_STATE_STANDBY` bei gesetztem `land_complete`, `MAV_STATE_BOOT` vor abgeschlossener Initialisierung und sonst `MAV_STATE_ACTIVE`. Der Arm-Zustand geht darin nicht ein. `GCS_MAVLINK_Copter::landed_state()` meldet bei gesetztem `land_complete` `MAV_LANDED_STATE_ON_GROUND` und sonst je nach Flugmodus `LANDING`, `TAKEOFF` oder `IN_AIR`. Da Failsafe und Initialisierung außerhalb des Geltungsbereichs liegen, gilt `MAV_STATE_ACTIVE` genau dann, wenn `landed_state` nicht `MAV_LANDED_STATE_ON_GROUND` ist, also auch während Start und Landung (`ArduCopter/GCS_MAVLink_Copter.cpp`, Z. 67 bis 83 und 1245 bis 1257). Ein Copter am Boden meldet `MAV_STATE_STANDBY`, auch wenn er scharf ist. Das Bit `MAV_MODE_FLAG_SAFETY_ARMED` folgt dagegen unmittelbar dem Arm-Zustand, weshalb Zeile 2 `STANDBY` mit gesetztem Arm-Bit verbindet. Diese Kombination ist zulässig.
 
-**Zeile 4.** Beim Entschärfen setzt ArduCopter `land_complete` selbst (`init_disarm_motors` ruft `set_land_complete(true)`). Entschärft und in der Luft ist für einen Copter daher nicht beobachtbar; er meldet dieselbe Sicht wie am Boden. Dieselbe Semantik zeigt der Kommandopfad von WenuLink: `DisarmCommand` dispatcht `StandbyTransition`, deren `reduce` neben `mavlink` auch `landed` auf `ON_GROUND` setzt.
+**Zeile 4.** Beim Entschärfen setzt ArduCopter `land_complete` selbst: `AP_Arming_Copter::disarm` ruft `set_land_complete(true)` (`ArduCopter/AP_Arming_Copter.cpp`, Z. 818), und `Copter::update_land_detector` setzt `land_complete` bei entschärften Motoren in jedem Zyklus erneut (`ArduCopter/land_detector.cpp`, Z. 54 bis 56). Entschärft und in der Luft ist für einen Copter daher nicht beobachtbar; er meldet dieselbe Sicht wie am Boden. Dieselbe Semantik zeigt der Kommandopfad von WenuLink: `DisarmCommand` dispatcht `StandbyTransition`, deren `reduce` neben `mavlink` auch `landed` auf `ON_GROUND` setzt.
 
 **Konsequenz.** Die Abbildung ist nicht injektiv. `(false, false)` und `(false, true)` liefern dieselbe Sicht; die Information, dass sich ein entschärftes Luftfahrzeug noch in der Luft befindet, wird verworfen. Das ist eine Entscheidung zugunsten der Protokolltreue und als Grenze des Verfahrens auszuweisen, nicht als Defekt.
 
@@ -74,10 +74,12 @@ Notation: `sync: S x T -> S`, `sync^n` die n-fache Anwendung mit derselben Telem
 
 **Formal.** Für alle `s` in `S` gilt mit `(status, armed, landed) = π(view(s))`:
 
-1. `status = MAV_STATE_ACTIVE` impliziert `landed = MAV_LANDED_STATE_IN_AIR`
+1. `status = MAV_STATE_ACTIVE` impliziert `landed ≠ MAV_LANDED_STATE_ON_GROUND`
 2. `landed = MAV_LANDED_STATE_IN_AIR` impliziert `armed`
 
-Aus 1 und 2 folgt, dass `MAV_STATE_ACTIVE` ein gesetztes Arm-Bit voraussetzt.
+Aus 1 und 2 folgt, dass `MAV_STATE_ACTIVE` zusammen mit `MAV_LANDED_STATE_IN_AIR` ein gesetztes Arm-Bit voraussetzt. Für `TAKEOFF` und `LANDING` trifft E-01 über das Arm-Bit keine Aussage.
+
+**Abgrenzung.** Aus derselben Herleitung folgen zwei stärkere Regeln: `landed ≠ ON_GROUND` impliziert `armed`, weil ein entschärfter Copter stets `land_complete` meldet, und als Umkehrung von Regel 1 `landed ≠ ON_GROUND` impliziert `status = MAV_STATE_ACTIVE`. Beide werden nicht aufgenommen. Der Zustand `(STANDBY, disarmed, TAKEOFF)` entsteht im untersuchten Stand bereits durch die reine Kommandofolge `[mode(AUTO), dispatch(TAKEOFF)]`. Gegenbeispiele gegen die stärkeren Regeln würden auf diese Folge schrumpfen, die außerhalb des Prüfgegenstands liegt (Abschnitt 1), und den Befund zu Regel 2 verdecken, bei dem `sync` das Arm-Signal der Telemetrie verwirft. Ist der Kommandopfad an `canTransition` gebunden, können die Regeln in einer Folgeversion aufgenommen werden.
 
 **Herkunft.** Spezifikationsgeleitet, aus der Kopplung von `system_status` und `landed_state` an `land_complete` in ArduCopter.
 
@@ -197,4 +199,5 @@ Die folgenden Defekte stammen aus dem Vorversuch zur Machbarkeit und sind vor di
 
 | Version | Datum | Änderung |
 |---|---|---|
-| 1.0 | `06.10.2026` | Erstfassung. Eigenschaften E-01 bis E-06, Zielabbildung nach Abschnitt 3, offene Annahme A-01. |
+| 1.0 | `06.10.2026` | Erstfassung. Eigenschaften E-01 bis E-06, Zielabbildung nach Abschnitt 3, offene Annahme A-01.                                                                                                                                                                                                                                                                                                                                                            |
+| 1.1 | `19.10.2026` | E-01 Regel 1 von `landed = IN_AIR` auf `landed ≠ ON_GROUND` gelockert, Folgerung aus Regel 1 und 2 eingeschränkt, Abgrenzung ergänzt, Herleitung in Abschnitt 3 präzisiert, ArduPilot-Fundstellen auf einen festen Commit gelegt und `init_disarm_motors` ersetzt. Anlass: Lauf 1 (`test-results/pbt/v1`) wertete korrekte Startzustände wie `(ACTIVE, armed, TAKEOFF)` als Verstoß; ArduCopter meldet `MAV_STATE_ACTIVE` auch während Start und Landung. |

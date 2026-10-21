@@ -39,14 +39,12 @@ data class ArmCommand(val timeout: Long = 5000L) : AircraftCommand {
 
     override suspend fun execute(ctx: AircraftHandler): UnitResult {
         // TODO: check if compatible with CancellableCoroutine
-        if (!TakeoffTransition.hasDelayedArmMode(ctx.state)) {
-            // Manual takeoff
-            ctx.armMotors()
-            if (!ctx.waitArmTransition(true, timeout)) {
-                return CommandResult.error("Unable to arm motors")
-            }
+        // The published state follows the telemetry: start the motors in every mode and
+        // dispatch only after the confirmation
+        ctx.armMotors()
+        if (!ctx.waitArmTransition(true, timeout)) {
+            return CommandResult.error("Unable to arm motors")
         }
-        // Automatic takeoff only. Must wait for state changes
         ctx.stateMachine.dispatch(ArmTransition)
 
         return CommandResult.ok

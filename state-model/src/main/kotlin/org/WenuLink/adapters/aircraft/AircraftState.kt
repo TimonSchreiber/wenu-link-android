@@ -29,16 +29,13 @@ data class AircraftState(
     val homeCoordinates: Coordinates3D? = null,
     val modeFlag: Int = MAV_MODE_FLAG.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
     val flightMode: ArduCopterFlightMode = ArduCopterFlightMode.STABILIZE,
-    val armed: Boolean = false,
-    val armTimestamp: Long = 0
+    val armed: Boolean = false
 ) {
-    val armRequested = armTimestamp > 0
-
     fun isHomeSet() = homeCoordinates != null
 
     fun isStandBy() = mavlink == MAV_STATE.MAV_STATE_STANDBY
 
-    fun isArmed() = armed || armRequested
+    fun isArmed() = armed
 
     fun isFlying() = landed == MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
 
@@ -68,9 +65,7 @@ data class AircraftState(
             MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
         },
         // Sync ARM/DISARM state, published through SAFETY_ARMED only
-        armed = isArmed,
-        // The flight controller reports no pending arm request
-        armTimestamp = 0
+        armed = isArmed
     )
 }
 
@@ -111,8 +106,7 @@ object StandbyTransition : StateTransition {
     override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_STANDBY,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND,
-        armed = false,
-        armTimestamp = 0
+        armed = false
     )
 }
 
@@ -123,21 +117,12 @@ object ArmTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState =
-        from.copy(armed = true, armTimestamp = now)
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(armed = true)
 }
 
 object TakeoffTransition : StateTransition {
-    // This is a list with ArduCopterFlightModes that can bypass state.isArmed() and wait isFlying()
-    fun hasDelayedArmMode(from: AircraftState): Boolean = listOf(
-        ArduCopterFlightMode.GUIDED,
-        ArduCopterFlightMode.AUTO
-    ).any { it == from.flightMode }
-
     override fun canTransition(from: AircraftState): UnitResult = when {
-        !hasDelayedArmMode(from) && !from.isArmed() ->
-            CommandResult.error("${from.flightMode} requires to be armed first")
-
+        !from.isArmed() -> CommandResult.error("${from.flightMode} requires to be armed first")
         else -> CommandResult.ok
     }
 
@@ -155,8 +140,7 @@ object FlyingTransition : StateTransition {
 
     override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_ACTIVE,
-        landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR,
-        armTimestamp = 0
+        landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
     )
 }
 
@@ -281,12 +265,7 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
             fcState.isArmed() && !fcState.isFlying() && !state.isOnTheGround() -> TouchdownTransition
 
             // Disarmed: return to standby, also in the air (ArduCopter sets land_complete on disarm)
-            !fcState.isArmed() && !state.armRequested -> StandbyTransition
-
-            // Catch unsuccessful arm
-            !fcState.isArmed() &&
-                state.armRequested &&
-                (clock.now() - state.armTimestamp) > 10_000L -> StandbyTransition
+            !fcState.isArmed() -> StandbyTransition
 
             else -> null
         }

@@ -55,9 +55,10 @@ const val ARM_TIMEOUT_MS = 10_000L
 
 /**
  * Number of monitor steps over which "for all m >= n" is checked (E-02, E-04). A test can only
- * check finitely many steps. The only time-dependent branch of sync is the arm timeout: if
- * armTimestamp was set at the latest where the checked range starts, the timeout has expired
- * within this many further steps, so a departure caused by it falls inside the range.
+ * check finitely many steps. Up to G-007 the arm timeout was the only time-dependent branch of
+ * sync, and HORIZON was derived from it so that a departure caused by the timeout falls inside
+ * the range. The corrected sync has no time-dependent branch; HORIZON is kept so that runs
+ * before and after the corrections check the same range.
  */
 const val HORIZON = (ARM_TIMEOUT_MS / SYNC_INTERVAL_MS).toInt() + 1
 
@@ -332,8 +333,9 @@ private val canonicalSequences: List<List<Event>> = listOf(
         Event.ModeChange(ArduCopterFlightMode.GUIDED),
         Event.Dispatch(Command.TAKEOFF)
     ),
-    // ArmCommand in GUIDED dispatches ArmTransition without arming the motors; the telemetry
-    // stays disarmed until the timeout boundary and one millisecond past it
+    // Former delayed arm in GUIDED (until G-007): ArmTransition without confirmation by the
+    // telemetry, then waiting up to and just past the former timeout. Kept as inputs: the
+    // first disarmed sync must clear the arm bit.
     listOf(
         Event.ModeChange(ArduCopterFlightMode.GUIDED),
         Event.Dispatch(Command.ARM),
@@ -643,19 +645,11 @@ private fun <T> deviationRuns(
 }
 
 /** A state with all fields, internal ones included, for traces and E-04b. */
-internal fun renderState(state: AircraftState): String {
-    val armTimestamp = if (state.armTimestamp == 0L) {
-        "none"
-    } else {
-        "+${state.armTimestamp - START_TIME_MS}ms"
-    }
-    return "mavlink=${mavStateName(state.mavlink)} " +
-        "landed=${landedStateName(state.landed)} " +
-        "modeFlag=${modeFlagName(state.modeFlag)} " +
-        "mode=${state.flightMode} " +
-        "armed=${state.armed} " +
-        "armTimestamp=$armTimestamp"
-}
+internal fun renderState(state: AircraftState): String = "mavlink=${mavStateName(state.mavlink)} " +
+    "landed=${landedStateName(state.landed)} " +
+    "modeFlag=${modeFlagName(state.modeFlag)} " +
+    "mode=${state.flightMode} " +
+    "armed=${state.armed} "
 
 private fun render(outcome: Outcome): String = when (outcome) {
     is Outcome.Synced -> {

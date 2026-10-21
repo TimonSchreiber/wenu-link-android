@@ -426,7 +426,7 @@ internal fun reportCoverage(property: String, t: Telemetry, context: PropertyCon
 // ---------------------------------------------------------------------------
 
 /**
- * Command suffix that steers a sequence towards a state with π(view(s)) = soll(t), following
+ * Command suffix that steers a sequence towards a state with π(view(s)) ∈ soll(t), following
  * the call patterns in AircraftCommands. It only shapes the distribution: whether the reached
  * state is stable is decided by the oracle in the spec, and a wrong assumption here only shows
  * up as a higher discard rate. There is deliberately no sync suffix: every candidate would then
@@ -602,11 +602,32 @@ internal fun <T> deviationRanges(
     from: Int,
     index: String,
     show: (T) -> String = { it.toString() }
+): List<String> = deviationRuns(values, from, index, show) { it == target }
+
+/**
+ * Like [deviationRanges], but against a set of accepted values: soll(t) is set-valued since
+ * catalog v1.2. Passing such a set to [deviationRanges] would still compile with T = Any and
+ * report every position, so call sites with soll(t) must use this function.
+ */
+internal fun <T> deviationRangesOutside(
+    values: List<T>,
+    accepted: Set<T>,
+    from: Int,
+    index: String,
+    show: (T) -> String = { it.toString() }
+): List<String> = deviationRuns(values, from, index, show) { it in accepted }
+
+private fun <T> deviationRuns(
+    values: List<T>,
+    from: Int,
+    index: String,
+    show: (T) -> String,
+    isAccepted: (T) -> Boolean
 ): List<String> {
     val result = mutableListOf<String>()
     var position = from
     while (position < values.size) {
-        if (values[position] == target) {
+        if (isAccepted(values[position])) {
             position++
             continue
         }

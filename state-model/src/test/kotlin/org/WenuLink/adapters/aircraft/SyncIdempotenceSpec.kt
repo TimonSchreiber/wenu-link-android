@@ -8,11 +8,11 @@ import io.kotest.property.checkAll
 
 /**
  * E-04a Idempotenz der beobachtbaren Sicht und E-04b Idempotenz auf Zustandsebene,
- * Eigenschaftskatalog v1.0, Abschnitt 4:
+ * Eigenschaftskatalog v1.2, Abschnitt 4:
  * "Wiederholt gesendete identische Statusmeldungen verändern die veröffentlichte MAVLink-Sicht
  * eines stabilen Zustands nicht" (E-04a), "einen stabilen Zustand auch intern nicht" (E-04b).
  *
- * Formal: Sei s in S stabil bezüglich t in T_stable, also π(view(s)) = soll(t). Dann gilt für
+ * Formal: Sei s in S stabil bezüglich t in T_stable, also π(view(s)) ∈ soll(t). Dann gilt für
  * alle n >= 1:
  *   E-04a: view(sync^n(s, t)) = view(s)
  *   E-04b: sync^n(s, t) = s
@@ -42,7 +42,7 @@ class SyncIdempotenceSpec :
             "E-04a Abgleich mit $t lässt die Sicht eines stabilen Zustands unverändert" {
                 val context = checkAll(conditionalConfig, stableCandidates(t)) { events ->
                     val execution = Execution.reach(events)
-                    assume(project(view(execution.state)) == soll(t))
+                    assume(project(view(execution.state)) in soll(t))
                     collect(lastChange(execution))
 
                     // views[n] = view(sync^n(s, t))
@@ -64,7 +64,7 @@ class SyncIdempotenceSpec :
             "E-04b Abgleich mit $t lässt einen stabilen Zustand unverändert" {
                 val context = checkAll(conditionalConfig, stableCandidates(t)) { events ->
                     val execution = Execution.reach(events)
-                    assume(project(view(execution.state)) == soll(t))
+                    assume(project(view(execution.state)) in soll(t))
                     collect(lastChange(execution))
 
                     // states[n] = sync^n(s, t)

@@ -5,7 +5,7 @@ import com.MAVLink.enums.MAV_MODE_FLAG
 import com.MAVLink.enums.MAV_STATE
 
 /*
- * Oracle for the property catalog v1.0 (state-model/docs/eigenschaftskatalog.md),
+ * Oracle for the property catalog v1.2 (state-model/docs/eigenschaftskatalog.md),
  * sections 2 and 3: the observable MAVLink view, its projection onto the
  * telemetry-determined fields, and the target mapping.
  *
@@ -77,40 +77,54 @@ fun project(view: MavlinkView): ProjectedView = ProjectedView(
 // ---------------------------------------------------------------------------
 
 /**
- * The table of section 3, row by row. T_stable = T (A-01), so every element of T has a row.
+ * The table of section 3, row by row. Since catalog v1.2 every row is a set of accepted
+ * projected views; only row 3 holds two. T_stable = T (A-01), so every element of T has a row.
  * Rows 1 and 4 map to the same view: the mapping is not injective by design.
  */
-private val targetMapping: Map<Telemetry, ProjectedView> = mapOf(
+private val targetMapping: Map<Telemetry, Set<ProjectedView>> = mapOf(
     // Row 1: disarmed on the ground
-    Telemetry(isArmed = false, isFlying = false) to ProjectedView(
-        systemStatus = MAV_STATE.MAV_STATE_STANDBY,
-        safetyArmed = false,
-        landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+    Telemetry(isArmed = false, isFlying = false) to setOf(
+        ProjectedView(
+            systemStatus = MAV_STATE.MAV_STATE_STANDBY,
+            safetyArmed = false,
+            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+        )
     ),
     // Row 2: armed on the ground; STANDBY with the arm bit set is valid for ArduCopter
-    Telemetry(isArmed = true, isFlying = false) to ProjectedView(
-        systemStatus = MAV_STATE.MAV_STATE_STANDBY,
-        safetyArmed = true,
-        landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+    Telemetry(isArmed = true, isFlying = false) to setOf(
+        ProjectedView(
+            systemStatus = MAV_STATE.MAV_STATE_STANDBY,
+            safetyArmed = true,
+            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+        )
     ),
-    // Row 3: armed in the air
-    Telemetry(isArmed = true, isFlying = true) to ProjectedView(
-        systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
-        safetyArmed = true,
-        landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
+    // Row 3: armed in the air; LANDING while the flight mode lands (ArduCopter landed_state())
+    Telemetry(isArmed = true, isFlying = true) to setOf(
+        ProjectedView(
+            systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
+            safetyArmed = true,
+            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
+        ),
+        ProjectedView(
+            systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
+            safetyArmed = true,
+            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
+        )
     ),
     // Row 4: disarmed in the air; ArduCopter sets land_complete on disarm, same view as row 1
-    Telemetry(isArmed = false, isFlying = true) to ProjectedView(
-        systemStatus = MAV_STATE.MAV_STATE_STANDBY,
-        safetyArmed = false,
-        landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+    Telemetry(isArmed = false, isFlying = true) to setOf(
+        ProjectedView(
+            systemStatus = MAV_STATE.MAV_STATE_STANDBY,
+            safetyArmed = false,
+            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+        )
     )
 ).also { mapping ->
     require(mapping.keys == Telemetry.all.toSet()) { "Target mapping must cover all of T" }
 }
 
-/** soll: T_stable -> π(V), according to the table in section 3. */
-fun soll(t: Telemetry): ProjectedView = targetMapping.getValue(t)
+/** soll: T_stable -> P(π(V)), according to the table in section 3. */
+fun soll(t: Telemetry): Set<ProjectedView> = targetMapping.getValue(t)
 
 // ---------------------------------------------------------------------------
 // Names for readable counterexamples

@@ -172,6 +172,19 @@ object LandTransition : StateTransition {
     )
 }
 
+object TouchdownTransition : StateTransition {
+    override fun canTransition(from: AircraftState): UnitResult = when {
+        !from.isArmed() -> CommandResult.error("Not armed")
+        from.isOnTheGround() -> CommandResult.error("Already on the ground")
+        else -> CommandResult.ok
+    }
+
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+        mavlink = MAV_STATE.MAV_STATE_STANDBY,
+        landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
+    )
+}
+
 object FlightTerminationTransition : StateTransition {
     override fun canTransition(from: AircraftState): UnitResult = when {
         !from.isArmed() -> CommandResult.error("Not armed")
@@ -263,6 +276,9 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
 
             // Taking off and now flying: advance to flying
             fcState.isArmed() && fcState.isFlying() && state.isTakingOff() -> FlyingTransition
+
+            // Armed and no longer flying: back on the ground (ArduCopter sets land_complete)
+            fcState.isArmed() && !fcState.isFlying() && !state.isOnTheGround() -> TouchdownTransition
 
             // Disarmed: return to standby, also in the air (ArduCopter sets land_complete on disarm)
             !fcState.isArmed() && !state.armRequested -> StandbyTransition

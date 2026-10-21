@@ -29,6 +29,7 @@ data class AircraftState(
     val homeCoordinates: Coordinates3D? = null,
     val modeFlag: Int = MAV_MODE_FLAG.MAV_MODE_FLAG_CUSTOM_MODE_ENABLED,
     val flightMode: ArduCopterFlightMode = ArduCopterFlightMode.STABILIZE,
+    val armed: Boolean = false,
     val armTimestamp: Long = 0
 ) {
     val armRequested = armTimestamp > 0
@@ -37,7 +38,7 @@ data class AircraftState(
 
     fun isStandBy() = mavlink == MAV_STATE.MAV_STATE_STANDBY
 
-    fun isArmed() = mavlink == MAV_STATE.MAV_STATE_ACTIVE || armRequested
+    fun isArmed() = armed || armRequested
 
     fun isFlying() = landed == MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
 
@@ -54,7 +55,7 @@ data class AircraftState(
     fun isPowerOff() = mavlink == MAV_STATE.MAV_STATE_POWEROFF
 
     fun resolveFrom(isArmed: Boolean, isFlying: Boolean): AircraftState = this.copy(
-        // Sync ARM/DISARM state
+        // ArduCopter: STANDBY while land_complete is set, ACTIVE otherwise
         mavlink = if (isArmed) {
             MAV_STATE.MAV_STATE_ACTIVE
         } else {
@@ -66,6 +67,8 @@ data class AircraftState(
         } else {
             MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
         },
+        // Sync ARM/DISARM state, published through SAFETY_ARMED only
+        armed = isArmed,
         // The flight controller reports no pending arm request
         armTimestamp = 0
     )
@@ -108,6 +111,7 @@ object StandbyTransition : StateTransition {
     override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_STANDBY,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND,
+        armed = false,
         armTimestamp = 0
     )
 }
@@ -115,12 +119,12 @@ object StandbyTransition : StateTransition {
 object ArmTransition : StateTransition {
     // TODO: update with modes from https://ardupilot.org/copter/docs/arming_the_motors.html
     override fun canTransition(from: AircraftState): UnitResult = when {
-        !from.isStandBy() -> CommandResult.error("Not ready to arm")
+        !from.isStandBy() || from.isArmed() -> CommandResult.error("Not ready to arm")
         else -> CommandResult.ok
     }
 
     override fun reduce(from: AircraftState, now: Long): AircraftState =
-        from.copy(mavlink = MAV_STATE.MAV_STATE_ACTIVE, armTimestamp = now)
+        from.copy(armed = true, armTimestamp = now)
 }
 
 object TakeoffTransition : StateTransition {
@@ -137,8 +141,10 @@ object TakeoffTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState =
-        from.copy(landed = MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF)
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+        mavlink = MAV_STATE.MAV_STATE_ACTIVE,
+        landed = MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF
+    )
 }
 
 object FlyingTransition : StateTransition {
@@ -147,8 +153,11 @@ object FlyingTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState =
-        from.copy(landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR, armTimestamp = 0)
+    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+        mavlink = MAV_STATE.MAV_STATE_ACTIVE,
+        landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR,
+        armTimestamp = 0
+    )
 }
 
 object LandTransition : StateTransition {
@@ -177,7 +186,7 @@ object FlightTerminationTransition : StateTransition {
 
 object PowerOffTransition : StateTransition {
     override fun canTransition(from: AircraftState): UnitResult = when {
-        !from.isStandBy() -> CommandResult.error("Still armed")
+        !from.isStandBy() || from.isArmed() -> CommandResult.error("Still armed")
         !from.isOnTheGround() -> CommandResult.error("Still flying")
         else -> CommandResult.ok
     }

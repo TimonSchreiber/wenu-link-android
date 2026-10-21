@@ -653,6 +653,7 @@ internal fun renderState(state: AircraftState): String {
         "landed=${landedStateName(state.landed)} " +
         "modeFlag=${modeFlagName(state.modeFlag)} " +
         "mode=${state.flightMode} " +
+        "armed=${state.armed} " +
         "armTimestamp=$armTimestamp"
 }
 

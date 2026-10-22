@@ -262,7 +262,8 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
             fcState.isArmed() && fcState.isFlying() && state.isTakingOff() -> FlyingTransition
 
             // Armed and no longer flying: back on the ground (ArduCopter sets land_complete)
-            fcState.isArmed() && !fcState.isFlying() && !state.isOnTheGround() -> TouchdownTransition
+            fcState.isArmed() && !fcState.isFlying() && !state.isOnTheGround() ->
+                TouchdownTransition
 
             // Disarmed: return to standby, also in the air (ArduCopter sets land_complete on disarm)
             !fcState.isArmed() -> StandbyTransition

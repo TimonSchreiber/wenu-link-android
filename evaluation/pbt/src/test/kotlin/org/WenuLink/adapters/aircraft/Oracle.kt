@@ -5,7 +5,7 @@ import com.MAVLink.enums.MAV_MODE_FLAG
 import com.MAVLink.enums.MAV_STATE
 
 /*
- * Oracle for the property catalog v1.2 (state-model/docs/eigenschaftskatalog.md),
+ * Oracle for the property catalog v1.2 (evaluation/pbt/docs/eigenschaftskatalog.md),
  * sections 2 and 3: the observable MAVLink view, its projection onto the
  * telemetry-determined fields, and the target mapping.
  *

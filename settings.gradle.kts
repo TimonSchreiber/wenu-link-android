@@ -24,3 +24,4 @@ rootProject.name = "WenuLink"
 include(":app")
 include(":mavlink")
 include(":state-model")
+include(":evaluation:pbt")

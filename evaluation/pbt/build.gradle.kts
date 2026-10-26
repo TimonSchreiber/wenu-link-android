@@ -34,4 +34,14 @@ dependencies {
 
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
+
+    // Passes Kotest's seed settings from -P to the test JVM, where PropertyTesting reads them.
+    // Used by save-run.sh and run-mutants.sh in the thesis repo.
+    listOf(
+        "kotest.proptest.default.seed",
+        "kotest.proptest.seed.write-failed",
+        "kotest.proptest.seed.fail-if-set"
+    ).forEach { name ->
+        providers.gradleProperty(name).orNull?.let { systemProperty(name, it) }
+    }
 }

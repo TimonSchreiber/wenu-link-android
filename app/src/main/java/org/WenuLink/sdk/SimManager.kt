@@ -88,8 +88,8 @@ object SimManager {
     }
 
     suspend fun run(
-        lat: Double = -8.066478642777481,
-        long: Double = -34.98744367551871,
+        lat: Double = 50.781327,
+        long: Double = 7.178956,
         alt: Float = 24f,
         updateFrequency: Int = 10,
         satelliteCount: Int = 8

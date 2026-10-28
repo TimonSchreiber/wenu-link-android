@@ -107,17 +107,17 @@ object FCManager {
     fun getAltitude(): Float = mInstance?.state?.aircraftLocation?.altitude ?: Float.MAX_VALUE
 
     fun startTakeoff(onResult: (String?) -> Unit) =
-        mInstance?.startTakeoff { SDKUtils.createCompletionCallback(onResult) }
+        mInstance?.startTakeoff(SDKUtils.createCompletionCallback(onResult))
 
     fun confirmLanding(onResult: (String?) -> Unit) =
         // for some reason these methods are not calling onResult, possibly is a thread issue.
         mInstance?.confirmLanding { SDKUtils.createCompletionCallback(onResult) }
 
     fun armMotors(onResult: (String?) -> Unit) =
-        mInstance?.turnOnMotors { SDKUtils.createCompletionCallback(onResult) }
+        mInstance?.turnOnMotors(SDKUtils.createCompletionCallback(onResult))
 
     fun disarmMotors(onResult: (String?) -> Unit) =
-        mInstance?.turnOffMotors { SDKUtils.createCompletionCallback(onResult) }
+        mInstance?.turnOffMotors(SDKUtils.createCompletionCallback(onResult))
 
     fun sensorState(sensorState: SensorState?): AppSensorState = when (sensorState) {
         SensorState.DISCONNECTED,

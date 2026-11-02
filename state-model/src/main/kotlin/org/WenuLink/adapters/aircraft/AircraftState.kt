@@ -150,7 +150,7 @@ object FlyingTransition : StateTransition {
 object LandTransition : StateTransition {
     override fun canTransition(from: AircraftState): UnitResult = when {
         !from.isArmed() -> CommandResult.error("Not armed")
-        !from.isFlying() -> CommandResult.error("Not flying")
+        !from.isFlying() && !from.isLanding() -> CommandResult.error("Not flying")
         else -> CommandResult.ok
     }
 
@@ -198,7 +198,7 @@ object PowerOffTransition : StateTransition {
 
 data class FlightModeTransition(private val flightMode: ArduCopterFlightMode) : StateTransition {
     private fun flyingMode(from: AircraftState): UnitResult = when {
-        !from.isFlying() -> CommandResult.error("Not flying")
+        !from.isFlying() && !from.isLanding() -> CommandResult.error("Not flying")
         else -> CommandResult.ok
     }
 

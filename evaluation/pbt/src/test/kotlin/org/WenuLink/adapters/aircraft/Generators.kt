@@ -428,11 +428,11 @@ internal fun reportCoverage(property: String, t: Telemetry, context: PropertyCon
 // ---------------------------------------------------------------------------
 
 /**
- * Command suffix that steers a sequence towards a state with π(view(s)) ∈ soll(t), following
- * the call patterns in AircraftCommands. It only shapes the distribution: whether the reached
- * state is stable is decided by the oracle in the spec, and a wrong assumption here only shows
- * up as a higher discard rate. There is deliberately no sync suffix: every candidate would then
- * already have passed through sync(·, t), which hides violations on the first sync.
+ * Command suffix that steers a sequence towards a state with π(view(s)) ∈ soll(t, μ(view(s))),
+ * following the call patterns in AircraftCommands. It only shapes the distribution: whether the
+ * reached state is stable is decided by the oracle in the spec, and a wrong assumption here only
+ * shows up as a higher discard rate. There is deliberately no sync suffix: every candidate would
+ * then already have passed through sync(·, t), which hides violations on the first sync.
  */
 private fun steeringSuffix(t: Telemetry): List<Event> = when {
     // Row 3, ArmCommand and TakeoffCommand
@@ -607,17 +607,17 @@ internal fun <T> deviationRanges(
 ): List<String> = deviationRuns(values, from, index, show) { it == target }
 
 /**
- * Like [deviationRanges], but against a set of accepted values: soll(t) is set-valued since
- * catalog v1.2. Passing such a set to [deviationRanges] would still compile with T = Any and
- * report every position, so call sites with soll(t) must use this function.
+ * Like [deviationRanges], but with an acceptance test instead of a single target value: soll
+ * is set-valued since catalog v1.2 and depends on the reported flight mode since v1.3, so E-02
+ * judges every position on its own with [isAccepted].
  */
-internal fun <T> deviationRangesOutside(
+internal fun <T> deviationRangesWhere(
     values: List<T>,
-    accepted: Set<T>,
     from: Int,
     index: String,
-    show: (T) -> String = { it.toString() }
-): List<String> = deviationRuns(values, from, index, show) { it in accepted }
+    show: (T) -> String = { it.toString() },
+    isAccepted: (T) -> Boolean
+): List<String> = deviationRuns(values, from, index, show, isAccepted)
 
 private fun <T> deviationRuns(
     values: List<T>,

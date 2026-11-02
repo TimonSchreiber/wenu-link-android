@@ -5,7 +5,7 @@ import com.MAVLink.enums.MAV_MODE_FLAG
 import com.MAVLink.enums.MAV_STATE
 
 /*
- * Oracle for the property catalog v1.2 (evaluation/pbt/docs/eigenschaftskatalog.md),
+ * Oracle for the property catalog v1.3 (evaluation/pbt/docs/eigenschaftskatalog.md),
  * sections 2 and 3: the observable MAVLink view, its projection onto the
  * telemetry-determined fields, and the target mapping.
  *
@@ -76,10 +76,39 @@ fun project(view: MavlinkView): ProjectedView = ProjectedView(
 // Section 3: target mapping
 // ---------------------------------------------------------------------------
 
+/** Row 3, accepted in every flight mode. */
+private val armedInAir = ProjectedView(
+    systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
+    safetyArmed = true,
+    landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
+)
+
+/** Row 3, accepted only while the reported flight mode lies in [landingCapableModes]. */
+private val armedLanding = ProjectedView(
+    systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
+    safetyArmed = true,
+    landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
+)
+
 /**
- * The table of section 3, row by row. Since catalog v1.2 every row is a set of accepted
- * projected views; only row 3 holds two. T_stable = T (A-01), so every element of T has a row.
- * Rows 1 and 4 map to the same view: the mapping is not injective by design.
+ * M_L of section 3: the custom_mode values in which ArduCopter can report
+ * MAV_LANDED_STATE_LANDING, i.e. the modes whose class overrides Mode::is_landing().
+ * Written out as ArduCopter mode numbers (Mode::Number) instead of read from
+ * ArduCopterFlightMode, which belongs to the system under test.
+ */
+private val landingCapableModes: Set<Long> = setOf(
+    3L, // AUTO
+    6L, // RTL
+    9L, // LAND
+    21L, // SMART_RTL
+    27L // AUTO_RTL, reported by AUTO during a DO_LAND_START landing sequence
+)
+
+/**
+ * The table of section 3, row by row, for flight modes outside M_L. Every row is a set of
+ * accepted projected views (since catalog v1.2); [soll] adds LANDING to row 3 for modes in
+ * M_L (since v1.3). T_stable = T (A-01), so every element of T has a row. Rows 1 and 4 map to
+ * the same view: the mapping is not injective by design.
  */
 private val targetMapping: Map<Telemetry, Set<ProjectedView>> = mapOf(
     // Row 1: disarmed on the ground
@@ -98,19 +127,8 @@ private val targetMapping: Map<Telemetry, Set<ProjectedView>> = mapOf(
             landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
         )
     ),
-    // Row 3: armed in the air; LANDING while the flight mode lands (ArduCopter landed_state())
-    Telemetry(isArmed = true, isFlying = true) to setOf(
-        ProjectedView(
-            systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
-            safetyArmed = true,
-            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
-        ),
-        ProjectedView(
-            systemStatus = MAV_STATE.MAV_STATE_ACTIVE,
-            safetyArmed = true,
-            landedState = MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
-        )
-    ),
+    // Row 3: armed in the air; LANDING only in M_L, see soll (ArduCopter landed_state())
+    Telemetry(isArmed = true, isFlying = true) to setOf(armedInAir),
     // Row 4: disarmed in the air; ArduCopter sets land_complete on disarm, same view as row 1
     Telemetry(isArmed = false, isFlying = true) to setOf(
         ProjectedView(
@@ -123,8 +141,30 @@ private val targetMapping: Map<Telemetry, Set<ProjectedView>> = mapOf(
     require(mapping.keys == Telemetry.all.toSet()) { "Target mapping must cover all of T" }
 }
 
-/** soll: T_stable -> P(π(V)), according to the table in section 3. */
-fun soll(t: Telemetry): Set<ProjectedView> = targetMapping.getValue(t)
+/**
+ * soll: T_stable x M -> P(π(V)), according to the table in section 3. [customMode] is μ(v),
+ * the flight mode reported by the view that is judged.
+ */
+fun soll(t: Telemetry, customMode: Long): Set<ProjectedView> {
+    val row = targetMapping.getValue(t)
+    return if (t.isArmed && t.isFlying && customMode in landingCapableModes) {
+        row + armedLanding
+    } else {
+        row
+    }
+}
+
+/** π(v) ∈ soll(t, μ(v)): whether [view] is a target view for [t], judged in its own mode. */
+fun isInTarget(t: Telemetry, view: MavlinkView): Boolean = project(view) in soll(t, view.customMode)
+
+/**
+ * π(v) together with μ(v), e.g. "(ACTIVE, armed, LANDING) in STABILIZE", for deviations that
+ * are judged against soll(t, μ(v)). The mode name is for display only.
+ */
+fun renderJudged(view: MavlinkView): String {
+    val mode = ArduCopterFlightMode.from(view.customMode)?.name ?: view.customMode.toString()
+    return "${project(view)} in $mode"
+}
 
 // ---------------------------------------------------------------------------
 // Names for readable counterexamples

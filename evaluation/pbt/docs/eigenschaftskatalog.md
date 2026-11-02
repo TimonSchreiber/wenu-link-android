@@ -1,8 +1,8 @@
 # Eigenschaftskatalog
 
-**Version 1.2**
+**Version 1.3**
 
-Dieses Dokuments legt die Konsistenzeigenschaften fest, gegen die die Übersetzungslogik von WenuLink im Rahmen der Arbeit geprüft wird. Die Festschreibung erfolgt vor der systematischen Befundaufnahme. Änderungen werden über eine neue Versionsnummer, Datum, Begründung und einen Eintrag im Änderungsprotokoll dokumentiert.
+Dieses Dokument legt die Konsistenzeigenschaften fest, gegen die die Übersetzungslogik von WenuLink im Rahmen der Arbeit geprüft wird. Die Festschreibung erfolgt vor der systematischen Befundaufnahme. Änderungen werden über eine neue Versionsnummer, Datum, Begründung und einen Eintrag im Änderungsprotokoll dokumentiert.
 
 ---
 
@@ -12,11 +12,11 @@ Dieses Dokuments legt die Konsistenzeigenschaften fest, gegen die die Übersetzu
 
 **Ausgangsfassung.** Commit `dcf6676`. Die im Zuge der Extraktion vorgenommenen Änderungen (Auflösung der Logger-Abhängigkeit, Injektion der `Clock`, Rückgabewert von `sync`) gehören zur Ausgangsfassung und sind keine Korrekturen.
 
-**Zustandsraum.** Der Start- und Landezyklus mit den Zustandsfeldern `mavlink`, `landed`, `modeFlag`, `flightMode` und `armTimestamp`. Nicht Gegenstand sind Kamera- und Gimbalsteuerung, Missionsverwaltung, Parameterhandhabung, Home-Position sowie Failsafe- und Notfallzustände. Die genannten Zustandsfelder beschreiben die Ausgangsfassung. Korrekturen können Felder hinzufügen ider entfernen; die Eigenschaften beziehen sich ausschließlich auf die Sicht nach Abschnitt 2 und bleiben davon unberührt.
+**Zustandsraum.** Der Start- und Landezyklus mit den Zustandsfeldern `mavlink`, `landed`, `modeFlag`, `flightMode` und `armTimestamp`. Nicht Gegenstand sind Kamera- und Gimbalsteuerung, Missionsverwaltung, Parameterhandhabung, Home-Position sowie Failsafe- und Notfallzustände. Die genannten Zustandsfelder beschreiben die Ausgangsfassung. Korrekturen können Felder hinzufügen oder entfernen; die Eigenschaften beziehen sich ausschließlich auf die Sicht nach Abschnitt 2 und bleiben davon unberührt.
 
 **Erreichbarkeit.** `S` bezeichnet die Menge der Zustände, die sich aus dem Zustand nach `BootTransition` und `StandbyTransition` durch eine endliche Folge zulässiger Ereignisse ergeben. Zulässige Ereignisse sind ein Abgleich `sync(isArmed, isFlying)`, ein Kommando, nachgebildet als `dispatch(τ)` unter der Bedingung `canDispatch(τ)`, oder ein Moduswechsel, nachgebildet als `updateFlightMode(m)` unter der Bedingung `isModeAllowed(m)`. Die Nachbildung orientiert sich am Aufrufmuster von `AircraftCommands` und `AircraftHandler`. Kommandos und Moduswechsel erweitern den für die Eigenschaften betrachteten Zustandsraum, sind selbst jedoch nicht Prüfgegenstand; die Eigenschaften prüfen ausschließlich das Verhalten von `sync`. Der Zustand vor dem Boot (`MAV_STATE_UNINIT` zusammen mit `MAV_LANDED_STATE_UNDEFINED`) liegt außerhalb des Geltungsbereichs.
 
-**Nicht erfasst.** Die Zuordnung von Flugmodus auf `base_mode` und `custom_mode` setzt `FlightModeTransition`. Ob diese Zuordnung korrekt ist, prüft keine Eigenschaft dieses Katalogs.
+**Nicht erfasst.** Die Zuordnung von Flugmodus auf `base_mode` und `custom_mode` setzt `FlightModeTransition`. Ob diese Zuordnung korrekt ist, prüft keine Eigenschaft dieses Katalogs. Zeile 3 der Zielabbildung liest den gemeldeten Flugmodus aus `customMode` (Abschnitt 3); sie setzt die Zuordnung damit voraus, ohne sie zu prüfen.
 
 ---
 
@@ -39,26 +39,36 @@ Die Eigenschaften beziehen sich auf die beobachtbare MAVLink-Sicht der Bridge. I
 
     π(v) = (v.systemStatus, v.safetyArmed, v.landedState)
 
+`μ` bezeichnet den gemeldeten Flugmodus, ebenfalls eine Projektion der Sicht:
+
+    μ(v) = v.customMode
+
 ---
 
 ## 3. Zielabbildung
 
-`soll: T_stable → P(π(V))` ordnet einer stabilen DJI-Telemetrie die Menge der MAVLink-Sichten zu, die ein ArduPilot-Copter im entsprechenden Betriebszustand veröffentlichen würde. Bis auf Zeile 3 enthält jede Menge genau eine Sicht.
+`soll: T_stable × M → P(π(V))` ordnet einer stabilen DJI-Telemetrie und einem gemeldeten Flugmodus die Menge der MAVLink-Sichten zu, die ein ArduPilot-Copter im entsprechenden Betriebszustand veröffentlichen würde. `M` ist die Menge der Werte von `customMode`. Bis auf Zeile 3 hängt die Menge nicht vom Flugmodus ab und enthält genau eine Sicht.
 
 `T = {true, false} x {true, false}` ist die Menge der Telemetrieeingaben. `T_stable` ist die Teilmenge derjenigen Eingaben, die als Dauerzustand auftreten können; nach A-01 wird `T_stable = T` angenommen.
 
-Die Zielabbildung ist eine Aussage über `π(V)`, nicht über `V`. `baseMode` jenseits des Arm-Bits und `customMode` hängen vom Flugmodus ab, und der Flugmodus ist kein Eingang von `sync`. Über sie trifft die Zielabbildung daher keine Aussage; ihr Verhalten regelt E-06.
+Die Zielabbildung ist eine Aussage über `π(V)`, nicht über `V`. `baseMode` jenseits des Arm-Bits und `customMode` hängen vom Flugmodus ab, und der Flugmodus ist kein Eingang von `sync`. Über sie trifft die Zielabbildung daher keine Aussage; ihr Verhalten regelt E-06. Zeile 3 hängt dennoch vom gemeldeten Flugmodus ab, da ArduCopter `landed_state` aus dem Flugmodus ableitet: Der Flugmodus ist dort Bedingung, nicht Gegenstand der Aussage.
 
-| `isArmed` | `isFlying` | `systemStatus`      | `safetyArmed` | `landedState`                                             |
-|-----------|------------|---------------------|---------------|-----------------------------------------------------------|
-| false     | false      | `MAV_STATE_STANDBY` | false         | `MAV_LANDED_STATE_ON_GROUND`                              |
-| true      | false      | `MAV_STATE_STANDBY` | true          | `MAV_LANDED_STATE_ON_GROUND`                              |
-| true      | true       | `MAV_STATE_ACTIVE`  | true          | `MAV_LANDED_STATE_IN_AIR` oder `MAV_LANDED_STATE_LANDING` |
-| false     | true       | `MAV_STATE_STANDBY` | false         | `MAV_LANDED_STATE_ON_GROUND`                              |
+| `isArmed` | `isFlying` | `systemStatus`      | `safetyArmed` | `landedState`                                                            |
+|-----------|------------|---------------------|---------------|--------------------------------------------------------------------------|
+| false     | false      | `MAV_STATE_STANDBY` | false         | `MAV_LANDED_STATE_ON_GROUND`                                             |
+| true      | false      | `MAV_STATE_STANDBY` | true          | `MAV_LANDED_STATE_ON_GROUND`                                             |
+| true      | true       | `MAV_STATE_ACTIVE`  | true          | `MAV_LANDED_STATE_IN_AIR`; für `μ ∈ M_L` auch `MAV_LANDED_STATE_LANDING` |
+| false     | true       | `MAV_STATE_STANDBY` | false         | `MAV_LANDED_STATE_ON_GROUND`                                             |
 
 **Herleitung.** `GCS_MAVLINK_Copter::vehicle_system_status()` meldet `MAV_STATE_CRITICAL` bei ausgelöstem Failsafe, `MAV_STATE_STANDBY` bei gesetztem `land_complete`, `MAV_STATE_BOOT` vor abgeschlossener Initialisierung und sonst `MAV_STATE_ACTIVE`. Der Arm-Zustand geht darin nicht ein. `GCS_MAVLINK_Copter::landed_state()` meldet bei gesetztem `land_complete` `MAV_LANDED_STATE_ON_GROUND` und sonst je nach Flugmodus `LANDING`, `TAKEOFF` oder `IN_AIR`. Da Failsafe und Initialisierung außerhalb des Geltungsbereichs liegen, gilt `MAV_STATE_ACTIVE` genau dann, wenn `landed_state` nicht `MAV_LANDED_STATE_ON_GROUND` ist, also auch während Start und Landung (`ArduCopter/GCS_MAVLink_Copter.cpp`, Z. 67 bis 83 und 1245 bis 1257). Ein Copter am Boden meldet `MAV_STATE_STANDBY`, auch wenn er scharf ist. Das Bit `MAV_MODE_FLAG_SAFETY_ARMED` folgt dagegen unmittelbar dem Arm-Zustand, weshalb Zeile 2 `STANDBY` mit gesetztem Arm-Bit verbindet. Diese Kombination ist zulässig.
 
-**Zeile 3.** `GCS_MAVLINK_Copter::landed_state()` meldet bei nicht gesetztem `land_complete` `MAV_LANDED_STATE_LANDING`, solange der Flugmodus landet, und `MAV_LANDED_STATE_TAKEOFF`, solange er startet (`ArduCopter/GCS_MAVLink_Copter.cpp`, Z. 1250 bis 1254). Eub Landeanflug unter `(true, true)` ist daher mit `LANDING` korrekt gemeldet. `TAKEOFF` wird nicht aufgenommen: Im betrachteten Modell ist die Startphase der Übergang vom Boden in die Luft und unter `(ture, true)` nach einem Abgleichschritt abgeschlossen, was die Schranke bon E-02 bereits abdeckt. Ob `LANDING` zum gemeldeten Flugmodus passt, prüft der Katalog nicht, da der Flugmodus kein Eingang von `sync` ist.
+**Zeile 3.** `GCS_MAVLINK_Copter::landed_state()` meldet bei nicht gesetztem `land_complete` `MAV_LANDED_STATE_LANDING`, solange der Flugmodus landet, und `MAV_LANDED_STATE_TAKEOFF`, solange er startet (`ArduCopter/GCS_MAVLink_Copter.cpp`, Z. 1250 bis 1254). Ob ein Modus landet, entscheidet `Mode::is_landing()`. Die Basisklasse liefert `false` (`ArduCopter/mode.h`, Z. 165); überschrieben wird die Funktion nur von `ModeAuto` (Z. 590), `ModeLand` (Z. 1319), `ModeRTL` (Z. 1560) und `ModeSmartRTL` (Z. 1674). Im HEARTBEAT erscheint der Flugmodus als `custom_mode = flightmode->mode_number()` (`ArduCopter/GCS_MAVLink_Copter.cpp`, Z. 62 bis 65); `ModeAuto` meldet dabei `AUTO` oder, während einer Landesequenz, `AUTO_RTL` (`ArduCopter/mode.h`, Z. 539). Daraus folgt die Menge der Flugmodi, in denen `LANDING` gemeldet werden kann, mit den Nummern nach `Mode::Number` (`ArduCopter/mode.h`, Z. 77 bis 102):
+
+    M_L = { AUTO (3), RTL (6), LAND (9), SMART_RTL (21), AUTO_RTL (27) }
+
+In allen übrigen Flugmodi meldet ein bewaffneter Copter in der Luft `IN_AIR`. In `M_L` ist `IN_AIR` ebenfalls zulässig: `ModeAuto`, `ModeRTL` und `ModeSmartRTL` melden `LANDING` nur in ihrer Landephase, die das Modell nicht abbildet. `TAKEOFF` wird nicht aufgenommen: Im betrachteten Modell ist die Startphase der Übergang vom Boden in die Luft und unter `(true, true)` nach einem Abgleichschritt abgeschlossen, was die Schranke von E-02 bereits abdeckt.
+
+**Abgrenzung zu Zeile 3.** Aus derselben Herleitung folgt für LAND eine strengere Regel: `ModeLand::is_landing()` ist stets wahr, ArduCopter meldet in LAND also ausschließlich `LANDING`. Sie wird bewusst nicht aufgenommen. Moduswechsel und Landung sind im Modell getrennte Ereignisse (`updateFlightMode(LAND)` und `dispatch(LandTransition)`), wie in `:app`, wo der Wechsel nach LAND `RequestLand` auslöst und dieses `LandTransition` dispatcht. Der Zustand `(ACTIVE, armed, IN_AIR)` in LAND liegt zwischen beiden Ereignissen; ihn als Verstoß zu werten, verlangte von `sync`, eine Landung aus dem Flugmodus abzuleiten, die ein Kommando auslöst. Als Grenze bleibt, dass der Katalog nicht prüft, ob in LAND tatsächlich `LANDING` gemeldet wird.
 
 **Zeile 4.** Beim Entschärfen setzt ArduCopter `land_complete` selbst: `AP_Arming_Copter::disarm` ruft `set_land_complete(true)` (`ArduCopter/AP_Arming_Copter.cpp`, Z. 818), und `Copter::update_land_detector` setzt `land_complete` bei entschärften Motoren in jedem Zyklus erneut (`ArduCopter/land_detector.cpp`, Z. 54 bis 56). Entschärft und in der Luft ist für einen Copter daher nicht beobachtbar; er meldet dieselbe Sicht wie am Boden. Dieselbe Semantik zeigt der Kommandopfad von WenuLink: `DisarmCommand` dispatcht `StandbyTransition`, deren `reduce` neben `mavlink` auch `landed` auf `ON_GROUND` setzt.
 
@@ -68,7 +78,7 @@ Die Zielabbildung ist eine Aussage über `π(V)`, nicht über `V`. `baseMode` je
 
 ## 4. Eigenschaften
 
-Notation: `sync: S x T → S`, `sync^n` die n-fache Anwendung mit derselben Telemetrie, `view` und `π` nach Abschnitt 2, `soll` nach Abschnitt 3.
+Notation: `sync: S x T → S`, `sync^n` die n-fache Anwendung mit derselben Telemetrie, `view`, `π` und `μ` nach Abschnitt 2, `soll` nach Abschnitt 3.
 
 ### E-01 Widerspruchsfreiheit der veröffentlichten Felder
 
@@ -89,13 +99,15 @@ Aus 1 und 2 folgt, dass `MAV_STATE_ACTIVE` zusammen mit `MAV_LANDED_STATE_IN_AIR
 
 ### E-02 Konvergenz (Selbststabilisierung)
 
-**Informell.** Aus jedem erreichbaren Zustand erreicht die Bridge unter konstant anliegender Telemetrie innerhalb einer endlichen Anzahl von Abgleichschritten die für diese Telemetrie spezifizierte MAVLink-Sicht und verbleibt anschließend in dieser Sicht.
+**Informell.** Aus jedem erreichbaren Zustand erreicht die Bridge unter konstant anliegender Telemetrie innerhalb einer endlichen Anzahl von Abgleichschritten eine für diese Telemetrie und den gemeldeten Flugmodus spezifizierte MAVLink-Sicht und verbleibt anschließend bei solchen Sichten.
 
-**Formal.** Für alle `s` in `S`, alle `t` in `T_stable` existiert ein `n` mit `0 <= n <= k`, sodass für alle `m >= n` gilt:
+**Formal.** Für alle `s` in `S`, alle `t` in `T_stable` existiert ein `n` mit `0 <= n <= k`, sodass für alle `m >= n` mit `v_m = view(sync^m(s, t))` gilt:
 
-    π(view(sync^m(s, t))) ∈ soll(t)
+    π(v_m) ∈ soll(t, μ(v_m))
 
 mit der Schranke `k = 3`.
+
+**Beurteilung im gemeldeten Flugmodus.** Jede Sicht wird in dem Flugmodus beurteilt, den sie selbst meldet. Ändert `sync` den Flugmodus nicht (E-06), gilt `μ(v_m) = μ(view(s))`; die Formulierung setzt E-06 aber nicht voraus.
 
 **Reichweite der Quantifizierung.** `s` läuft über alle erreichbaren Zustände, unabhängig davon, ob die Folge, die zu `s` geführt hat, bereits in `t` endete. Damit erfasst E-02 auch den Fall, dass sich die anliegende Telemetrie zwischen zwei `sync`-Aufrufen geändert hat, etwa weil zwischen zwei Überwachungsschritten mehrere Zustandsänderungen aufgetreten sind.
 
@@ -122,7 +134,7 @@ Standby → Arm → Takeoff → Flying umfasst drei Transitionen.
 
 **Informell.** Wiederholt gesendete identische Statusmeldungen verändern die veröffentlichte MAVLink-Sicht eines stabilen Zustands nicht.
 
-**Formal.** Sei `s` in `S` stabil bezüglich `t` in `T_stable`, also `π(view(s)) ∈ soll(t)`. Dann gilt für alle `n >= 1`:
+**Formal.** Sei `s` in `S` stabil bezüglich `t` in `T_stable`, also `π(view(s)) ∈ soll(t, μ(view(s)))`. Dann gilt für alle `n >= 1`:
 
 1. `view(sync^n(s, t)) = view(s)`
 
@@ -138,7 +150,7 @@ Standby → Arm → Takeoff → Flying umfasst drei Transitionen.
 
 1. `sync^n(s, t) = s`
 
-**Verhältnis zu E-04a und E-03.** E-04b ist strikt stärker; es schließt neben der beobachtbaren Sicht auch interne Zustandsfelder wie  `armTimestamp` ein. Ein Verstoß gegen E-04b bei gültigem E-04a kann nur dann beobachtbar werden, wenn auch E-03 verletzt ist: Gilt E-03, so ist Sichtgleichheit eine Bisimulation und interne Zustandsunterschiede können sich unter den betrachteten Eingaben nicht auf die beobachtbare Sicht auswirken. Gegenbeispiele gegen E-04b sind daher nur zusammen mit dem Befund zu E-03 zu bewerten.
+**Verhältnis zu E-04a und E-03.** E-04b ist strikt stärker; es schließt neben der beobachtbaren Sicht auch interne Zustandsfelder wie `armTimestamp` ein. Ein Verstoß gegen E-04b bei gültigem E-04a kann nur dann beobachtbar werden, wenn auch E-03 verletzt ist: Gilt E-03, so ist Sichtgleichheit eine Bisimulation und interne Zustandsunterschiede können sich unter den betrachteten Eingaben nicht auf die beobachtbare Sicht auswirken. Gegenbeispiele gegen E-04b sind daher nur zusammen mit dem Befund zu E-03 zu bewerten.
 
 **Herkunft.** Theoriegeleitet.
 
@@ -201,8 +213,9 @@ Defekte, die die Befundaufnahme findet, führt der Defektkatalog der Arbeit (Anh
 
 Änderungen erfolgen nie stillschweigend. Jede Änderung erhält eine neue Versionsnummer, einen eigenen Commit, einen Eintrag in dieser Tabelle mit Datum und Begründung sowie einen eigenen Tag. Die vorherige Version bleibt über ihren Tag abrufbar.
 
-| Version | Datum        | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-|---------|--------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.0     | `06.10.2026` | Erstfassung. Eigenschaften E-01 bis E-06, Zielabbildung nach Abschnitt 3, offene Annahme A-01.                                                                                                                                                                                                                                                                                                                                                            |
-| 1.1     | `19.10.2026` | E-01 Regel 1 von `landed = IN_AIR` auf `landed ≠ ON_GROUND` gelockert, Folgerung aus Regel 1 und 2 eingeschränkt, Abgrenzung ergänzt, Herleitung in Abschnitt 3 präzisiert, ArduPilot-Fundstellen auf einen festen Commit gelegt und `init_disarm_motors` ersetzt. Anlass: Lauf 1 (`test-results/pbt/v1`) wertete korrekte Startzustände wie `(ACTIVE, armed, TAKEOFF)` als Verstoß; ArduCopter meldet `MAV_STATE_ACTIVE` auch während Start und Landung. |
-| 1.2     | `21.10.2026` | Zeile 3 der Zielabbildung um `MAV_LANDED_STATE_LANDING` erweitert, `soll` mengenwertig, E-02 und E-04a prüfen auf Enthaltensein. Abschnitt 1 bezieht die Zustandsfelder auf die Ausgangsfassung, Abschnitt 6 verweist auf den Defektkatalog. Anlass: Lauf 4 (nach G-006) wertete eunen Landeanflug `(ACTIVE, armed, LANDING)` undter `(true, true)` als Verstoß; ArduCopter meldet während des Landeanflugs `LANDING`.                                    |
+| Version | Datum        | Änderung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+|---------|--------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.0     | `06.10.2026` | Erstfassung. Eigenschaften E-01 bis E-06, Zielabbildung nach Abschnitt 3, offene Annahme A-01.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| 1.1     | `19.10.2026` | E-01 Regel 1 von `landed = IN_AIR` auf `landed ≠ ON_GROUND` gelockert, Folgerung aus Regel 1 und 2 eingeschränkt, Abgrenzung ergänzt, Herleitung in Abschnitt 3 präzisiert, ArduPilot-Fundstellen auf einen festen Commit gelegt und `init_disarm_motors` ersetzt. Anlass: Lauf 1 (`test-results/pbt/v1`) wertete korrekte Startzustände wie `(ACTIVE, armed, TAKEOFF)` als Verstoß; ArduCopter meldet `MAV_STATE_ACTIVE` auch während Start und Landung.                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 1.2     | `21.10.2026` | Zeile 3 der Zielabbildung um `MAV_LANDED_STATE_LANDING` erweitert, `soll` mengenwertig, E-02 und E-04a prüfen auf Enthaltensein. Abschnitt 1 bezieht die Zustandsfelder auf die Ausgangsfassung, Abschnitt 6 verweist auf den Defektkatalog. Anlass: Lauf 4 (nach G-006) wertete einen Landeanflug `(ACTIVE, armed, LANDING)` unter `(true, true)` als Verstoß; ArduCopter meldet während des Landeanflugs `LANDING`.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| 1.3     | `02.11.2026` | Zeile 3 der Zielabbildung an den gemeldeten Flugmodus gebunden: `LANDING` nur für `μ ∈ M_L` (AUTO, RTL, LAND, SMART_RTL, AUTO_RTL), sonst nur `IN_AIR`. `soll` erhält den Flugmodus als zweites Argument, Abschnitt 2 die Projektion `μ`; E-02 und E-04a beurteilen jede Sicht in ihrem eigenen Flugmodus. Abgrenzung zur strengeren Regel für LAND ergänzt, Abschnitt 1 um den Bezug von Zeile 3 auf `customMode` ergänzt. Schreibfehler in der Einleitung und in den Abschnitten 1, 3, 4 und 7 ohne inhaltliche Änderung berichtigt. Anlass: Das Gegenbeispiel aus Lauf 4 (`test-results/pbt/v4`), auf das v1.2 zurückgeht, stand im Modus STABILIZE, in dem ArduCopter `IN_AIR` meldet. Die Begründung zu v1.2 trifft nur für landende Modi zu; v1.2 hat neben Fehltreffern auch ein zutreffendes Verdikt aus der Prüfung genommen (Defektkatalog, K-02 und G-009). |

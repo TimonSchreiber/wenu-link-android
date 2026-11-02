@@ -45,6 +45,9 @@ data class AircraftState(
 
     fun isOnTheGround() = landed == MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
 
+    /** LANDING in a flight mode in which ArduCopter cannot report LANDING. */
+    fun isLandingOutsideLandingMode() = isLanding() && !flightMode.canReportLanding
+
     fun isUninitialized() = mavlink == MAV_STATE.MAV_STATE_UNINIT
 
     fun isBoot() = mavlink == MAV_STATE.MAV_STATE_BOOT
@@ -261,6 +264,11 @@ class AircraftStateMachine(private val clock: Clock = SystemClock) {
             // Taking off and now flying: advance to flying
             fcState.isArmed() && fcState.isFlying() && state.isTakingOff() -> FlyingTransition
 
+            // Landing in a mode that cannot land: back in the air (ArduCopter derives LANDING
+            // from the flight mode)
+            fcState.isArmed() && fcState.isFlying() && state.isLandingOutsideLandingMode() ->
+                FlyingTransition
+
             // Armed and no longer flying: back on the ground (ArduCopter sets land_complete)
             fcState.isArmed() && !fcState.isFlying() && !state.isOnTheGround() ->
                 TouchdownTransition
@@ -354,6 +362,16 @@ enum class ArduCopterFlightMode(val mode: Long, private val baseModeType: BaseMo
 
     val baseMode: Int
         get() = baseModeType.flags
+
+    /**
+     * Whether ArduCopter can report MAV_LANDED_STATE_LANDING in this mode: only the modes whose
+     * class overrides Mode::is_landing() (ArduCopter/mode.h). AUTO_RTL is not modeled.
+     */
+    val canReportLanding: Boolean
+        get() = when (this) {
+            AUTO, RTL, LAND, SMART_RTL -> true
+            else -> false
+        }
 
     companion object {
         private val byValue = entries.associateBy { it.mode }

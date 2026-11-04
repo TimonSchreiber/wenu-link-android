@@ -134,8 +134,8 @@ sealed interface Event {
 // ---------------------------------------------------------------------------
 
 /** A clock that only moves when told to. Replaces the former TickingClock. */
-private class ManualClock(private var current: Long = START_TIME_MS) : Clock {
-    override fun now(): Long = current
+private class ManualClock(private var current: Long = START_TIME_MS) {
+    fun now(): Long = current
 
     fun advance(millis: Long) {
         require(millis >= 0) { "Time cannot run backwards: $millis ms" }
@@ -169,7 +169,7 @@ data class Step(val at: Long, val event: Event, val outcome: Outcome, val after:
  * All further changes go through [perform], so that the trace stays complete.
  */
 class Execution private constructor(private val clock: ManualClock) {
-    private val fsm = AircraftStateMachine(clock)
+    private val fsm = AircraftStateMachine()
     private val steps = mutableListOf<Step>()
     val initial: AircraftState
 

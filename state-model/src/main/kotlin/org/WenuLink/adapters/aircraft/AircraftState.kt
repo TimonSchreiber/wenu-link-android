@@ -75,7 +75,7 @@ data class AircraftState(
 sealed interface StateTransition {
     fun canTransition(from: AircraftState): UnitResult
 
-    fun reduce(from: AircraftState, now: Long): AircraftState
+    fun reduce(from: AircraftState): AircraftState
 }
 
 object InitialTransition : StateTransition {
@@ -86,7 +86,7 @@ object InitialTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState =
+    override fun reduce(from: AircraftState): AircraftState =
         from.copy(mavlink = MAV_STATE.MAV_STATE_UNINIT)
 }
 
@@ -96,7 +96,7 @@ object BootTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState =
+    override fun reduce(from: AircraftState): AircraftState =
         from.copy(mavlink = MAV_STATE.MAV_STATE_BOOT)
 }
 
@@ -106,7 +106,7 @@ object StandbyTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_STANDBY,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND,
         armed = false
@@ -120,7 +120,7 @@ object ArmTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(armed = true)
+    override fun reduce(from: AircraftState): AircraftState = from.copy(armed = true)
 }
 
 object TakeoffTransition : StateTransition {
@@ -129,7 +129,7 @@ object TakeoffTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_ACTIVE,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_TAKEOFF
     )
@@ -141,7 +141,7 @@ object FlyingTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_ACTIVE,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
     )
@@ -154,7 +154,7 @@ object LandTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_LANDING
     )
 }
@@ -166,7 +166,7 @@ object TouchdownTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_STANDBY,
         landed = MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
     )
@@ -179,7 +179,7 @@ object FlightTerminationTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_FLIGHT_TERMINATION
     )
 }
@@ -191,7 +191,7 @@ object PowerOffTransition : StateTransition {
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         mavlink = MAV_STATE.MAV_STATE_POWEROFF
     )
 }
@@ -209,7 +209,7 @@ data class FlightModeTransition(private val flightMode: ArduCopterFlightMode) : 
         else -> CommandResult.ok
     }
 
-    override fun reduce(from: AircraftState, now: Long): AircraftState = from.copy(
+    override fun reduce(from: AircraftState): AircraftState = from.copy(
         flightMode = this.flightMode
     )
 }
@@ -218,14 +218,14 @@ data class FlightModeTransition(private val flightMode: ArduCopterFlightMode) : 
  * Single source of truth for MAVLink + landed state transitions.
  * FSM / Reducer pattern.
  */
-class AircraftStateMachine(private val clock: Clock = SystemClock) {
+class AircraftStateMachine {
     var state = AircraftState()
         private set
 
     fun canDispatch(event: StateTransition): UnitResult = event.canTransition(state)
 
     fun dispatch(event: StateTransition): AircraftState {
-        state = event.reduce(state, clock.now())
+        state = event.reduce(state)
         return updateArmFlag()
     }
 

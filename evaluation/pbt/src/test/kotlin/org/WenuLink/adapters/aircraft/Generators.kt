@@ -20,7 +20,7 @@ import io.kotest.property.arbitrary.map
 import org.WenuLink.commands.CommandResult
 
 /*
- * Generators for the property catalog v1.0 (state-model/docs/eigenschaftskatalog.md).
+ * Generators for the property catalog v1.3 (evaluation/pbt/docs/eigenschaftskatalog.md).
  *
  * Every property quantifies over S, the states reachable from the state after
  * BootTransition and StandbyTransition (catalog, section 1). This file generates S as
@@ -37,10 +37,8 @@ import org.WenuLink.commands.CommandResult
 // ---------------------------------------------------------------------------
 
 /**
- * Clock reading at the start of every execution. The production [SystemClock] returns epoch
- * milliseconds. The value must stay well above 0: `armTimestamp == 0` is the sentinel for
- * "no arm requested" ([AircraftState.armRequested]), so an arm at clock time 0 would be
- * indistinguishable from no arm at all.
+ * Trace time at the start of every execution. The model no longer reads the time; trace
+ * timestamps are shown relative to this value.
  */
 private const val START_TIME_MS = 1_700_000_000_000L
 
@@ -48,8 +46,9 @@ private const val START_TIME_MS = 1_700_000_000_000L
 const val SYNC_INTERVAL_MS = 200L
 
 /**
- * Arm timeout in branch 5 of [AircraftStateMachine.sync]. Written out instead of read from
- * the model, so that a boundary mutant cannot move the generated values along with it.
+ * Arm timeout of the former branch 5 of [AircraftStateMachine.sync], removed with G-007. The
+ * corrected sync does not depend on time. The value remains the basis of [HORIZON] and of
+ * [anyElapse], so that generated sequences stay comparable across runs.
  */
 const val ARM_TIMEOUT_MS = 10_000L
 
@@ -123,7 +122,10 @@ sealed interface Event {
         override fun toString(): String = "mode($mode)"
     }
 
-    /** Time passing between two events. The clock is environment, not part of the state. */
+    /**
+     * Time passing between two events. The model no longer reads the time; the event only
+     * advances the trace time and is kept so that generated sequences stay comparable.
+     */
     data class Elapse(val millis: Long) : Event {
         override fun toString(): String = "+${millis}ms"
     }
@@ -270,12 +272,12 @@ class Execution private constructor(private val clock: ManualClock) {
 private val anyTelemetry: Arb<Telemetry> = Arb.element(Telemetry.all)
 
 /**
- * Flight modes, drawn from the classes the state model distinguishes: GUIDED and AUTO allow
- * a takeoff without arm (TakeoffTransition.hasDelayedArmMode), LAND and RTL require flying
- * (FlightModeTransition.canTransition). Uniformly over all 25 modes each class would come up
- * in only 8 % of mode changes, so each gets a third, the last third is uniform over all modes.
- * The classes are written out instead of read from the model, for the same reason as
- * [ARM_TIMEOUT_MS].
+ * Flight modes, drawn from the classes the state model distinguished: GUIDED and AUTO allowed
+ * a takeoff without arm until G-007 (TakeoffTransition.hasDelayedArmMode), LAND and RTL are
+ * only allowed in the air or while landing (FlightModeTransition.canTransition). Uniformly
+ * over all 25 modes each class would come up in only 8 % of mode changes, so each gets a
+ * third, the last third is uniform over all modes. The classes are written out instead of read
+ * from the model, so that a mutant cannot move the generated values along with it.
  */
 private val anyFlightMode: Arb<ArduCopterFlightMode> = Arb.choice(
     Arb.element(ArduCopterFlightMode.GUIDED, ArduCopterFlightMode.AUTO),
@@ -285,7 +287,7 @@ private val anyFlightMode: Arb<ArduCopterFlightMode> = Arb.choice(
 
 /**
  * Time between two events: mostly one monitor interval, otherwise short gaps, the values
- * around [ARM_TIMEOUT_MS] that decide branch 5 of sync, and long gaps beyond it.
+ * around [ARM_TIMEOUT_MS], the former arm timeout, and long gaps beyond it.
  */
 private val anyElapse: Arb<Long> = Arb.choose(
     3 to Arb.constant(SYNC_INTERVAL_MS),

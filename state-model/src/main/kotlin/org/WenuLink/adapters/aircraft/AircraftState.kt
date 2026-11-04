@@ -53,23 +53,6 @@ data class AircraftState(
     fun isBoot() = mavlink == MAV_STATE.MAV_STATE_BOOT
 
     fun isPowerOff() = mavlink == MAV_STATE.MAV_STATE_POWEROFF
-
-    fun resolveFrom(isArmed: Boolean, isFlying: Boolean): AircraftState = this.copy(
-        // ArduCopter: STANDBY while land_complete is set, ACTIVE otherwise
-        mavlink = if (isArmed) {
-            MAV_STATE.MAV_STATE_ACTIVE
-        } else {
-            MAV_STATE.MAV_STATE_STANDBY
-        },
-        // Sync of landed state
-        landed = if (isFlying) {
-            MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
-        } else {
-            MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND
-        },
-        // Sync ARM/DISARM state, published through SAFETY_ARMED only
-        armed = isArmed
-    )
 }
 
 sealed interface StateTransition {
@@ -125,7 +108,7 @@ object ArmTransition : StateTransition {
 
 object TakeoffTransition : StateTransition {
     override fun canTransition(from: AircraftState): UnitResult = when {
-        !from.isArmed() -> CommandResult.error("${from.flightMode} requires to be armed first")
+        !from.isArmed() -> CommandResult.error("Not armed")
         else -> CommandResult.ok
     }
 
@@ -251,35 +234,33 @@ class AircraftStateMachine {
         canDispatch(FlightModeTransition(mode))
 
     fun sync(isArmed: Boolean, isFlying: Boolean): StateTransition? {
-        // Check state and dispatch state transitions accordingly
-        val fcState = state.resolveFrom(isArmed, isFlying)
-
+        // Reconcile the state with the telemetry of the flight controller
         val transition: StateTransition? = when {
             // Telemetry reports armed: advance to armed
-            fcState.isArmed() && !state.isArmed() -> ArmTransition
+            isArmed && !state.isArmed() -> ArmTransition
 
             // Armed and on ground: advance to takeoff
-            fcState.isArmed() && fcState.isFlying() && state.isOnTheGround() -> TakeoffTransition
+            isArmed && isFlying && state.isOnTheGround() -> TakeoffTransition
 
             // Taking off and now flying: advance to flying
-            fcState.isArmed() && fcState.isFlying() && state.isTakingOff() -> FlyingTransition
+            isArmed && isFlying && state.isTakingOff() -> FlyingTransition
 
             // Landing in a mode that cannot land: back in the air (ArduCopter derives LANDING
             // from the flight mode)
-            fcState.isArmed() && fcState.isFlying() && state.isLandingOutsideLandingMode() ->
-                FlyingTransition
+            isArmed && isFlying && state.isLandingOutsideLandingMode() -> FlyingTransition
 
             // Armed and no longer flying: back on the ground (ArduCopter sets land_complete)
-            fcState.isArmed() && !fcState.isFlying() && !state.isOnTheGround() ->
-                TouchdownTransition
+            isArmed && !isFlying && !state.isOnTheGround() -> TouchdownTransition
 
             // Disarmed: return to standby, also in the air (ArduCopter sets land_complete on disarm)
-            !fcState.isArmed() -> StandbyTransition
+            !isArmed -> StandbyTransition
 
             else -> null
         }
 
-        transition?.let { dispatch((it)) }
+        if (transition != null) {
+            dispatch(transition)
+        }
         return transition
     }
 }

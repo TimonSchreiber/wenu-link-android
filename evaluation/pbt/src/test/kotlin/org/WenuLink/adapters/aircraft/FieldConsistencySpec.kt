@@ -8,13 +8,14 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.property.checkAll
 
 /**
- * E-01 Widerspruchsfreiheit der veröffentlichten Felder, Eigenschaftskatalog v1.1, Abschnitt 4:
+ * E-01 Widerspruchsfreiheit der veröffentlichten Felder, Eigenschaftskatalog v1.4, Abschnitt 4:
  * "Die telemetrie-bestimmten MAVLink-Felder stehen in keinem erreichbaren Zustand untereinander
  * im Widerspruch."
  *
  * Formal: Für alle s in S gilt mit (status, armed, landed) = π(view(s)):
  *   1. status = MAV_STATE_ACTIVE impliziert landed ≠ MAV_LANDED_STATE_ON_GROUND
- *   2. landed = MAV_LANDED_STATE_IN_AIR impliziert armed
+ *   2. landed ≠ MAV_LANDED_STATE_ON_GROUND impliziert armed
+ *   3. landed ≠ MAV_LANDED_STATE_ON_GROUND impliziert status = MAV_STATE_ACTIVE
  *
  * Umsetzung:
  *   - Geprüft wird jeder Zustand einer Ausführung, nicht nur der Letzte. Jedes Präfix einer
@@ -46,16 +47,34 @@ class FieldConsistencySpec :
             }
         }
 
-        "E-01 Regel 2: in der Luft nur mit gesetztem Arm-Bit" {
+        "E-01 Regel 2: außerhalb des Bodens nur mit gesetztem Arm-Bit" {
             checkAll(catalogConfig, eventSequence) { events ->
                 val execution = Execution.reach(events)
                 val views = execution.projectedViews()
 
-                val premiseReached = views.any { reportsInAir(it) }
-                collect(if (premiseReached) "IN_AIR erreicht" else "IN_AIR nie erreicht")
+                val premiseReached = views.any { !reportsOnGround(it) }
+                collect(if (premiseReached) "Boden verlassen" else "nur am Boden")
 
                 withClue({ execution.describe() }) {
-                    violations(views) { reportsInAir(it) implies it.safetyArmed }.shouldBeEmpty()
+                    violations(views) {
+                        !reportsOnGround(it) implies it.safetyArmed
+                    }.shouldBeEmpty()
+                }
+            }
+        }
+
+        "E-01 Regel 3: außerhalb des Bodens nur MAV_STATE_ACTIVE" {
+            checkAll(catalogConfig, eventSequence) { events ->
+                val execution = Execution.reach(events)
+                val views = execution.projectedViews()
+
+                val premiseReached = views.any { !reportsOnGround(it) }
+                collect(if (premiseReached) "Boden verlassen" else "nur am Boden")
+
+                withClue({ execution.describe() }) {
+                    violations(views) {
+                        !reportsOnGround(it) implies reportsActive(it)
+                    }.shouldBeEmpty()
                 }
             }
         }
@@ -76,9 +95,6 @@ private fun violations(views: List<ProjectedView>, rule: (ProjectedView) -> Bool
 
 private fun reportsActive(view: ProjectedView): Boolean =
     view.systemStatus == MAV_STATE.MAV_STATE_ACTIVE
-
-private fun reportsInAir(view: ProjectedView): Boolean =
-    view.landedState == MAV_LANDED_STATE.MAV_LANDED_STATE_IN_AIR
 
 private fun reportsOnGround(view: ProjectedView): Boolean =
     view.landedState == MAV_LANDED_STATE.MAV_LANDED_STATE_ON_GROUND

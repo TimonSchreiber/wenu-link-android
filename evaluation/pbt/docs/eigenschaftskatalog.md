@@ -1,6 +1,6 @@
 # Eigenschaftskatalog
 
-**Version 1.3**
+**Version 1.4**
 
 Dieses Dokument legt die Konsistenzeigenschaften fest, gegen die die Übersetzungslogik von WenuLink im Rahmen der Arbeit geprüft wird. Die Festschreibung erfolgt vor der systematischen Befundaufnahme. Änderungen werden über eine neue Versionsnummer, Datum, Begründung und einen Eintrag im Änderungsprotokoll dokumentiert.
 
@@ -82,18 +82,19 @@ Notation: `sync: S x T → S`, `sync^n` die n-fache Anwendung mit derselben Tele
 
 ### E-01 Widerspruchsfreiheit der veröffentlichten Felder
 
-**Informell.** Die telemetriebestimmten MAVLink-Felder stehen in keinem erreichbaren Zustand untereinander im Widerspruch.
-
 **Formal.** Für alle `s` in `S` gilt mit `(status, armed, landed) = π(view(s))`:
 
 1. `status = MAV_STATE_ACTIVE` impliziert `landed ≠ MAV_LANDED_STATE_ON_GROUND`
-2. `landed = MAV_LANDED_STATE_IN_AIR` impliziert `armed`
+2. `landed ≠ MAV_LANDED_STATE_ON_GROUND` impliziert `armed`
+3. `landed ≠ MAV_LANDED_STATE_ON_GROUND` impliziert `status = MAV_STATE_ACTIVE`
 
-Aus 1 und 2 folgt, dass `MAV_STATE_ACTIVE` zusammen mit `MAV_LANDED_STATE_IN_AIR` ein gesetztes Arm-Bit voraussetzt. Für `TAKEOFF` und `LANDING` trifft E-01 über das Arm-Bit keine Aussage.
+Aus 1 und 3 folgt `status = MAV_STATE_ACTIVE` genau dann, wenn `landed ≠ MAV_LANDED_STATE_ON_GROUND`; nach 2 setzt jeder solche Zustand ein gesetztes Arm-Bit voraus.
 
-**Abgrenzung.** Aus derselben Herleitung folgen zwei stärkere Regeln: `landed ≠ ON_GROUND` impliziert `armed`, weil ein entschärfter Copter stets `land_complete` meldet, und als Umkehrung von Regel 1 `landed ≠ ON_GROUND` impliziert `status = MAV_STATE_ACTIVE`. Beide werden nicht aufgenommen. Der Zustand `(STANDBY, disarmed, TAKEOFF)` entsteht im untersuchten Stand bereits durch die reine Kommandofolge `[mode(AUTO), dispatch(TAKEOFF)]`. Gegenbeispiele gegen die stärkeren Regeln würden auf diese Folge schrumpfen, die außerhalb des Prüfgegenstands liegt (Abschnitt 1), und den Befund zu Regel 2 verdecken, bei dem `sync` das Arm-Signal der Telemetrie verwirft. Ist der Kommandopfad an `canTransition` gebunden, können die Regeln in einer Folgeversion aufgenommen werden.
+**Herleitung der Regeln 2 und 3.** Regel 2 folgt aus Zeile 4 der Zielabbildung: Beim Entschärfen setzt ArduCopter `land_complete`, ein entschärfter Copter meldet also stets `MAV_LANDED_STATE_ON_GROUND` (Abschnitt 3). Regel 3 ist die Umkehrung von Regel 1: `vehicle_system_status()` meldet außerhalb von Failsafe und Initialisierung `MAV_STATE_ACTIVE`, solange `land_complete` nicht gesetzt ist (Abschnitt 3, Herleitung).
 
-**Herkunft.** Spezifikationsgeleitet, aus der Kopplung von `system_status` und `landed_state` an `land_complete` in ArduCopter.
+**Verschärfung in v1.4.** Bis v1.3 war Regel 2 auf `landed = MAV_LANDED_STATE_IN_AIR` beschränkt, und Regel 3 fehlte. Beide waren zurückgestellt, weil der Zustand `(STANDBY, disarmed, TAKEOFF)` im untersuchten Stand durch die reine Kommandofolge `[mode(AUTO), dispatch(TAKEOFF)]` entstand. Gegenbeispiele gegen die stärkeren Regeln wären auf diese Folge geschrumpft und hätten den Befund zu Regel 2 verdeckt, bei dem `sync` das Arm-Signal der Telemetrie verwirft. Die damals genannte Bedingung, den Kommandopfad an `canTransition` zu binden, war für `S` bereits erfüllt, da `S` Kommandos nur unter `canDispatch` zulässt (Abschnitt 1); der Zustand entstand, weil der Wächter von `TakeoffTransition` ihn in AUTO und GUIDED zuließ. Seit der Korrektur von G-007 verlangt er in jedem Flugmodus ein Arming, und die Folge wird abgelehnt.
+
+**Herkunft.** Spezifikationsgeleitet, aus der Kopplung von `system_status` und `landed_state` an `land_complete` in ArduCopter und aus dem Setzen von `land_complete` beim Entschärfen.
 
 **Art.** Safety.
 
@@ -219,3 +220,4 @@ Defekte, die die Befundaufnahme findet, führt der Defektkatalog der Arbeit (Anh
 | 1.1     | `19.10.2026` | E-01 Regel 1 von `landed = IN_AIR` auf `landed ≠ ON_GROUND` gelockert, Folgerung aus Regel 1 und 2 eingeschränkt, Abgrenzung ergänzt, Herleitung in Abschnitt 3 präzisiert, ArduPilot-Fundstellen auf einen festen Commit gelegt und `init_disarm_motors` ersetzt. Anlass: Lauf 1 (`test-results/pbt/v1`) wertete korrekte Startzustände wie `(ACTIVE, armed, TAKEOFF)` als Verstoß; ArduCopter meldet `MAV_STATE_ACTIVE` auch während Start und Landung.                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 1.2     | `21.10.2026` | Zeile 3 der Zielabbildung um `MAV_LANDED_STATE_LANDING` erweitert, `soll` mengenwertig, E-02 und E-04a prüfen auf Enthaltensein. Abschnitt 1 bezieht die Zustandsfelder auf die Ausgangsfassung, Abschnitt 6 verweist auf den Defektkatalog. Anlass: Lauf 4 (nach G-006) wertete einen Landeanflug `(ACTIVE, armed, LANDING)` unter `(true, true)` als Verstoß; ArduCopter meldet während des Landeanflugs `LANDING`.                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | 1.3     | `02.11.2026` | Zeile 3 der Zielabbildung an den gemeldeten Flugmodus gebunden: `LANDING` nur für `μ ∈ M_L` (AUTO, RTL, LAND, SMART_RTL, AUTO_RTL), sonst nur `IN_AIR`. `soll` erhält den Flugmodus als zweites Argument, Abschnitt 2 die Projektion `μ`; E-02 und E-04a beurteilen jede Sicht in ihrem eigenen Flugmodus. Abgrenzung zur strengeren Regel für LAND ergänzt, Abschnitt 1 um den Bezug von Zeile 3 auf `customMode` ergänzt. Schreibfehler in der Einleitung und in den Abschnitten 1, 3, 4 und 7 ohne inhaltliche Änderung berichtigt. Anlass: Das Gegenbeispiel aus Lauf 4 (`test-results/pbt/v4`), auf das v1.2 zurückgeht, stand im Modus STABILIZE, in dem ArduCopter `IN_AIR` meldet. Die Begründung zu v1.2 trifft nur für landende Modi zu; v1.2 hat neben Fehltreffern auch ein zutreffendes Verdikt aus der Prüfung genommen (Defektkatalog, K-02 und G-009). |
+| 1.4     | `05.11.2026` | E-01 verschärft: Regel 2 von `landed = IN_AIR` auf `landed ≠ ON_GROUND` erweitert, Regel 3 `landed ≠ ON_GROUND` impliziert `status = MAV_STATE_ACTIVE` neu; Folgerung, Herleitung und Herkunft entsprechend gefasst, die Abgrenzung durch einen Absatz zur Verschärfung ersetzt. Anlass: Beide Regeln waren zurückgestellt, weil `[mode(AUTO), dispatch(TAKEOFF)]` den Zustand `(STANDBY, disarmed, TAKEOFF)` erzeugte; seit der Korrektur von G-007 wird die Folge abgelehnt (Defektkatalog, G-006 und G-007). Die Verschärfung folgt aus der Herleitung in Abschnitt 3; ein Befund am Katalog liegt ihr nicht zugrunde.                                                                                                                                                                                                                                              |

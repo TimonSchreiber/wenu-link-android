@@ -475,15 +475,16 @@ fun stableCandidates(t: Telemetry): Arb<List<Event>> {
 /** Two executions to be compared at the same point in time. */
 data class ExecutionPair(val first: Execution, val second: Execution)
 
-/** Input for E-03: two event sequences whose end states are compared. */
-sealed interface ViewPair {
-    val first: List<Event>
-    val second: List<Event>
-
+/**
+ * Input for E-03: two event sequences whose end states are compared. When the end states share
+ * a view, they may still differ internally; E-03 requires that such a difference never shows
+ * in the next view.
+ */
+data class ViewPair(val first: List<Event>, val second: List<Event>) {
     /**
-     * Executes both sequences, then advances the clock that is behind, so that both executions
-     * are compared at the same point in time. Otherwise, a difference after the next sync could
-     * stem from the clocks instead of from the internal state.
+     * Executes both sequences, then advances the trace time of the one behind, so that both
+     * traces end at the same time. The model no longer reads the time; the alignment only keeps
+     * the two traces comparable.
      */
     fun reach(): ExecutionPair {
         val a = Execution.reach(first)
@@ -499,53 +500,26 @@ sealed interface ViewPair {
 }
 
 /**
- * The same event sequence twice, the second time with an extra delay of [skew] before position
- * [insertAt]. Both executions see the same events, so their views usually agree, while every
- * arm after the insertion point gets a later timestamp.
- */
-data class Twins(val events: List<Event>, val insertAt: Int, val skew: Long) : ViewPair {
-    override val first: List<Event>
-        get() = events
-
-    override val second: List<Event>
-        get() {
-            val at = minOf(insertAt, events.size)
-            return events.take(at) + Event.Elapse(skew) + events.drop(at)
-        }
-}
-
-/**
- * Two different event sequences. When their end states share a view, they may differ in more
- * than timing, for instance in whether the arm was requested by a command or by sync.
- */
-data class HistoryPair(override val first: List<Event>, override val second: List<Event>) :
-    ViewPair
-
-/**
- * Shrinks a [ViewPair] with [EventSequenceShrinker]: for [Twins] the shared sequence, so that
- * both executions keep seeing the same events, for a [HistoryPair] one sequence at a time. A
- * history pair additionally gets candidates that remove the same event from the common end of
- * both sequences at once. Without them, an event that both need for equal views, such as a
- * shared mode change, could never be removed: taking it from one sequence alone breaks the
- * precondition. A shrunk pair is 1-minimal with respect to all three kinds of removal.
+ * Shrinks a [ViewPair] with [EventSequenceShrinker], one sequence at a time. It additionally
+ * gets candidates that remove the same event from the common end of both sequences at once.
+ * Without them, an event that both need for equal views, such as a shared mode change, could
+ * never be removed: taking it from one sequence alone breaks the precondition. A shrunk pair is
+ * 1-minimal with respect to all three kinds of removal.
  */
 private object ViewPairShrinker : Shrinker<ViewPair> {
-    override fun shrink(value: ViewPair): List<ViewPair> = when (value) {
-        is Twins -> EventSequenceShrinker.shrink(value.events).map { value.copy(events = it) }
-
-        is HistoryPair -> {
-            val firstShrunk = EventSequenceShrinker.shrink(value.first).map {
-                value.copy(first = it)
-            }
-            val secondShrunk = EventSequenceShrinker.shrink(value.second).map {
-                value.copy(second = it)
-            }
-            firstShrunk + secondShrunk + commonEndRemovals(value)
+    override fun shrink(value: ViewPair): List<ViewPair> {
+        val firstShrunk = EventSequenceShrinker.shrink(value.first).map { value.copy(first = it) }
+        val secondShrunk = EventSequenceShrinker.shrink(value.second).map {
+            value.copy(second = it)
         }
+        return firstShrunk + secondShrunk + commonEndRemovals(value)
     }
 
-    /** Removes the k-th event from the end of both sequences, for every k within their common end. */
-    private fun commonEndRemovals(value: HistoryPair): List<ViewPair> {
+    /**
+     * Removes the k-th event from the end of both sequences, for every k within their common
+     * end.
+     */
+    private fun commonEndRemovals(value: ViewPair): List<ViewPair> {
         val candidates = mutableListOf<ViewPair>()
         var k = 1
         while (k <= value.first.size && k <= value.second.size) {
@@ -555,7 +529,7 @@ private object ViewPairShrinker : Shrinker<ViewPair> {
                 break
             }
             candidates.add(
-                HistoryPair(
+                ViewPair(
                     value.first.take(i) + value.first.drop(i + 1),
                     value.second.take(j) + value.second.drop(j + 1)
                 )
@@ -566,30 +540,49 @@ private object ViewPairShrinker : Shrinker<ViewPair> {
     }
 }
 
-/** Length range of the suffix that both sequences of a [HistoryPair] share. */
+/** Length range of the suffix that both sequences of a [ViewPair] share. */
 private val SHARED_SUFFIX_LENGTH = 0..10
 
 /**
- * Candidates for E-03: half [Twins], half [HistoryPair]. Twins reach equal views reliably and
- * vary the arm timestamps. A history pair consists of two independent prefixes followed by a
- * shared suffix: the suffix tends to bring both executions to the same view, while the
- * prefixes leave different internal state behind. Fully independent sequences share a view
- * far less often (suffix length 0 still covers them). The edge cases shift each canonical
- * sequence by just over [ARM_TIMEOUT_MS], so that only one of the twins is past the timeout
- * when compared.
+ * Pairs that reach the same state once through commands and once through sync, the two paths
+ * whose bookkeeping E-03 compares. They are the edge cases of [viewPairs].
+ */
+private val commandAndSyncPairs: List<ViewPair> = listOf(
+    // Armed on the ground: ArmCommand against an arm reported by the telemetry
+    ViewPair(
+        listOf(Event.Dispatch(Command.ARM)),
+        listOf(Event.Sync(Telemetry(isArmed = true, isFlying = false)))
+    ),
+    // In the air: ArmCommand and TakeoffCommand against a takeoff reported by the telemetry
+    ViewPair(
+        listOf(
+            Event.Dispatch(Command.ARM),
+            Event.Dispatch(Command.TAKEOFF),
+            Event.Dispatch(Command.FLYING)
+        ),
+        listOf(
+            Event.Sync(Telemetry(isArmed = true, isFlying = true)),
+            Event.Sync(Telemetry(isArmed = true, isFlying = true)),
+            Event.Sync(Telemetry(isArmed = true, isFlying = true))
+        )
+    )
+)
+
+/**
+ * Candidates for E-03: two independent prefixes followed by a shared suffix. The suffix tends
+ * to bring both executions to the same view, while the prefixes leave different histories
+ * behind. Fully independent sequences share a view far less often (suffix length 0 still
+ * covers them). Until the clock was removed, half of the candidates were twins, the same
+ * sequence with an extra delay; without time in the model both twins run identically, so they
+ * could not violate E-03 and were dropped.
  */
 val viewPairs: Arb<ViewPair> = arbitrary(
-    edgecases = canonicalSequences.map { Twins(it, insertAt = 0, skew = ARM_TIMEOUT_MS + 1) },
+    edgecases = commandAndSyncPairs,
     shrinker = ViewPairShrinker
 ) { _ ->
-    val twins = Arb.boolean().bind()
-    if (twins) {
-        Twins(eventSequence.bind(), Arb.int(0..SEQUENCE_LENGTH.last).bind(), anyElapse.bind())
-    } else {
-        val suffixLength = Arb.int(SHARED_SUFFIX_LENGTH).bind()
-        val suffix = List(suffixLength) { anyEvent.bind() }
-        HistoryPair(eventSequence.bind() + suffix, eventSequence.bind() + suffix)
-    }
+    val suffixLength = Arb.int(SHARED_SUFFIX_LENGTH).bind()
+    val suffix = List(suffixLength) { anyEvent.bind() }
+    ViewPair(eventSequence.bind() + suffix, eventSequence.bind() + suffix)
 }
 
 // ---------------------------------------------------------------------------

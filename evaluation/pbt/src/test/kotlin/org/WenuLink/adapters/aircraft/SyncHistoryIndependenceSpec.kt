@@ -19,17 +19,18 @@ import io.kotest.property.checkAll
  *   - Ein einzelner Abgleichschritt genügt. Erfüllt die Sichtgleichheit diese
  *     Einschrittbedingung, ist sie eine Bisimulation, und die Gleichheit bleibt unter jeder
  *     Folge erhalten (Abschnitt 2.1 der Arbeit).
- *   - Die Paare kommen aus viewPairs: zur Hälfte Twins (dieselbe Folge, zeitlich versetzt),
- *     zur Hälfte Paare verschiedener Verläufe (unabhängige Präfixe mit gemeinsamem Suffix).
- *     Twins variieren gezielt armTimestamp, die Verlaufspaare erfassen Zustände, die nach
- *     verschiedenen Verläufen dieselbe Sicht melden.
- *   - Vor dem Vergleich stehen beide Uhren auf derselben Zeit (ViewPair.reach). Die Uhr ist
- *     Umgebung, nicht Zustand.
+ *   - Die Paare kommen aus viewPairs: unabhängige Präfixe mit gemeinsamem Suffix, dazu als
+ *     Randfälle Paare, die denselben Zustand einmal über Kommandos und einmal über sync
+ *     erreichen. Die früheren Twins (dieselbe Folge, zeitlich versetzt) sind entfallen: Seit
+ *     das Modell die Zeit nicht mehr liest, laufen beide Ausführungen identisch und können
+ *     E-03 nicht verletzen.
+ *   - Vor dem Vergleich enden beide Spuren zur selben Zeit (ViewPair.reach). Das Modell liest
+ *     die Zeit nicht; die Angleichung hält nur die Spuren vergleichbar.
  *   - Die Vorbedingung view(s1) = view(s2) wird per assume gegen das Orakel geprüft, mit
  *     derselben Laufregel wie E-04 (conditionalConfig).
  *   - Je t in T ein Test.
- *   - Die Statistik unterscheidet die Quelle und ob die Zustände auch intern gleich sind.
- *     Intern gleiche Zustände erfüllen E-03 trivial, da sync deterministisch ist.
+ *   - Die Statistik zeigt, ob sichtgleiche Zustände auch intern gleich sind. Intern gleiche
+ *     Zustände erfüllen E-03 trivial, da sync deterministisch ist.
  */
 class SyncHistoryIndependenceSpec :
     StringSpec({
@@ -39,7 +40,7 @@ class SyncHistoryIndependenceSpec :
                 val context = checkAll(conditionalConfig, viewPairs) { pair ->
                     val (first, second) = pair.reach()
                     assume(view(first.state) == view(second.state))
-                    collect(pairClass(pair, first.state, second.state))
+                    collect(internalClass(first.state, second.state))
 
                     first.perform(Event.Sync(t))
                     second.perform(Event.Sync(t))
@@ -53,15 +54,9 @@ class SyncHistoryIndependenceSpec :
         }
     })
 
-/** Einordnung für die Statistik nach Quelle und interner Gleichheit. */
-private fun pairClass(pair: ViewPair, first: AircraftState, second: AircraftState): String {
-    val source = when (pair) {
-        is Twins -> "Twins"
-        is HistoryPair -> "verschiedene Verläufe"
-    }
-    val internal = if (first == second) "intern gleich" else "intern verschieden"
-    return "$source, $internal"
-}
+/** Einordnung für die Statistik: ob sichtgleiche Zustände auch intern gleich sind. */
+private fun internalClass(first: AircraftState, second: AircraftState): String =
+    if (first == second) "intern gleich" else "intern verschieden"
 
 private fun describePair(first: Execution, second: Execution): String =
     "Ausführung 1:\n${first.describe()}\n\nAusführung 2:\n${second.describe()}"
